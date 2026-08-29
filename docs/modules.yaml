@@ -27,6 +27,7 @@ modules:
       - src/robotsix_browser/models.py
       - src/robotsix_browser/operations.py
       - src/robotsix_browser/sessions.py
+      - src/robotsix_browser/vault.py
 
   - name: tests
     description: Test suite.
@@ -36,3 +37,4 @@ modules:
       - tests/test_filehub.py
       - tests/test_models.py
       - tests/test_operations.py
+      - tests/test_vault.py

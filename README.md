@@ -23,12 +23,12 @@ Dockerfile, CI, and tests.
 **Out of scope** (separate, dependent follow-on tickets):
 
 1. Roster registration + chat-skill doc in `robotsix-central-deploy`.
-2. Vaultwarden/Bitwarden secret client with zero-leakage credential injection.
-3. 2FA handling / operator-pause-for-code.
-4. The live OVH CS16584956 submission.
+2. 2FA handling / operator-pause-for-code.
+3. The live OVH CS16584956 submission.
 
-No credential/secret handling lives in this service yet — **values to fill are
-passed in by the caller.**
+Scoped Vaultwarden credential injection **is** implemented — see
+[Credential injection](#credential-injection-vaultwarden) below. Non-secret
+values to fill are still passed in by the caller (`type`, `select`, …).
 
 ## Running
 
@@ -56,6 +56,16 @@ Environment variables (prefix `ROBOTSIX_BROWSER_`):
 | `ROBOTSIX_BROWSER_DEFAULT_TIMEOUT_MS` | `30000`             | Default action timeout.                   |
 | `ROBOTSIX_BROWSER_HOST`           | `0.0.0.0`                | Bind host.                                |
 | `ROBOTSIX_BROWSER_PORT`           | `8000`                   | Bind port.                                |
+| `ROBOTSIX_BROWSER_BW_SERVER_URL`  | `""`                     | Vaultwarden server URL (Bitwarden API).   |
+| `ROBOTSIX_BROWSER_BW_CLIENT_ID`   | `""`                     | API-key `client_id` (`user.<uuid>`).      |
+| `ROBOTSIX_BROWSER_BW_CLIENT_SECRET` | `""`                   | API-key `client_secret` (masked).         |
+| `ROBOTSIX_BROWSER_BW_UNLOCK_SECRET` | `""`                   | Service-account master password (masked). |
+| `ROBOTSIX_BROWSER_BW_COLLECTION_ID` | `""`                   | The single collection the service reads.  |
+| `ROBOTSIX_BROWSER_BW_CLI_PATH`    | `bw`                     | Path to the Bitwarden CLI binary.         |
+
+The `BW_*` values are provisioned via the deploy EnvStore as masked container
+env vars — never committed, never echoed. When any required value is blank the
+credential-fill endpoint responds `503` (not configured).
 
 ## API
 
@@ -74,6 +84,7 @@ browser context (its own cookies / storage).
 | `POST /sessions/{id}/upload`      | Attach a **file-hub file id** to a file input.     |
 | `POST /sessions/{id}/wait`        | Wait for a selector and/or load state.             |
 | `GET /sessions/{id}/value`        | Read back a field's current value.                 |
+| `POST /sessions/{id}/fill-credentials` | Inject a **scoped Vaultwarden entry** (never echoed). |
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
 
 ### Human submit-gate
@@ -88,6 +99,42 @@ The `submit` endpoint is deliberately kept separate from `click`. It is the
    invoked.
 
 Never wire an automatic call to `/submit` after filling a form.
+
+## Credential injection (Vaultwarden)
+
+`POST /sessions/{id}/fill-credentials` logs a session into a website **without
+the secret ever passing through the chat agent, transcript, or logs**.
+
+```jsonc
+POST /sessions/{id}/fill-credentials
+{
+  "entry": "ovh-portal",          // vault entry name or id
+  "username_selector": "#login",
+  "password_selector": "#password"
+}
+// → 200 {"status": "ok", "url": "..."}   — value NEVER returned
+```
+
+Security model:
+
+- **Bitwarden CLI + API key.** The service authenticates to the operator's
+  Vaultwarden server (which speaks the Bitwarden API) via the `bw` CLI using
+  `client_credentials` (`client_id` = `user.<uuid>`, `client_secret`). Both, the
+  server URL, and the unlock secret come from env vars (see
+  [Configuration](#configuration)) — never in code, never in the repo. The
+  unlock secret is passed via `--passwordenv`, so it never appears on a process
+  argv.
+- **Dedicated service account + single collection.** The service is scoped to
+  one provisioned collection. A request for an entry outside that collection
+  fails cleanly with `403`; a missing entry returns `404`.
+- **Zero leakage.** At fill-time the entry is fetched and the
+  `username`/`password` are typed **directly into the browser fields**. The
+  secret value is never returned in a response body, never logged, and never
+  surfaced to the agent (`VaultCredential` redacts its password in `repr`).
+- **No 2FA / TOTP.** No TOTP seed is read or stored. If a site ever presents
+  2FA, the flow must pause for an operator-supplied code (not implemented yet).
+- **Human submit-gate preserved.** Filling only fills fields — the separate
+  `POST /sessions/{id}/submit` endpoint remains the only submit path.
 
 ## Development
 

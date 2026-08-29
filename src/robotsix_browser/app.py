@@ -12,6 +12,7 @@ Endpoint map (all session-scoped, each session is an isolated browser context):
 * ``POST   /sessions/{id}/upload``     attach a file-hub file to a file input
 * ``POST   /sessions/{id}/wait``       wait for a selector / load state
 * ``GET    /sessions/{id}/value``      read back a field's current value
+* ``POST   /sessions/{id}/fill-credentials``  inject a scoped Vaultwarden entry
 * ``POST   /sessions/{id}/submit``     HUMAN-GATED final submit / confirm
 
 HUMAN SUBMIT-GATE: no endpoint other than ``/submit`` submits a form, and
@@ -31,6 +32,7 @@ from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdE
 from robotsix_browser.models import (
     ActionResponse,
     ClickRequest,
+    FillCredentialsRequest,
     NavigateRequest,
     OpenSessionRequest,
     SelectRequest,
@@ -44,6 +46,13 @@ from robotsix_browser.models import (
 )
 from robotsix_browser.operations import UnsupportedUrlError
 from robotsix_browser.sessions import Session, SessionManager, SessionNotFoundError
+from robotsix_browser.vault import (
+    EntryNotFoundError,
+    EntryOutOfScopeError,
+    VaultClient,
+    VaultError,
+    VaultNotConfiguredError,
+)
 
 
 def get_manager(request: Request) -> SessionManager:
@@ -53,6 +62,11 @@ def get_manager(request: Request) -> SessionManager:
 
 def get_filehub(request: Request) -> FileHubClient:
     client: FileHubClient = request.app.state.filehub_client
+    return client
+
+
+def get_vault(request: Request) -> VaultClient:
+    client: VaultClient = request.app.state.vault_client
     return client
 
 
@@ -70,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     app.state.session_manager = SessionManager(headless=settings.headless)
     app.state.filehub_client = FileHubClient(settings.file_hub_base_url)
+    app.state.vault_client = VaultClient.from_settings(settings)
     try:
         yield
     finally:
@@ -190,6 +205,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             selector=selector,
             value=await operations.read_value(session.page, selector),
         )
+
+    @app.post("/sessions/{session_id}/fill-credentials", response_model=ActionResponse)
+    async def fill_credentials(
+        session_id: str,
+        request: FillCredentialsRequest,
+        manager: SessionManager = Depends(get_manager),
+        vault: VaultClient = Depends(get_vault),
+    ) -> ActionResponse:
+        """Inject a scoped Vaultwarden entry into the login form.
+
+        Fetches the entry via the Bitwarden CLI and types username/password
+        directly into the given fields.  The secret is never returned, logged,
+        or surfaced to the agent.  This only fills the form; the human-gated
+        ``/submit`` endpoint remains the only submit path.
+        """
+        session = _lookup(manager, session_id)
+        try:
+            url = await operations.fill_credentials(session.page, request, vault)
+        except VaultNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except EntryOutOfScopeError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except EntryNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except VaultError as exc:
+            raise HTTPException(
+                status_code=502, detail="credential retrieval failed"
+            ) from exc
+        return ActionResponse(url=url)
 
     @app.post("/sessions/{session_id}/submit", response_model=ActionResponse)
     async def submit(

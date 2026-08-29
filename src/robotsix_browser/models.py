@@ -72,6 +72,21 @@ class UploadRequest(BaseModel):
     file_id: str
 
 
+class FillCredentialsRequest(BaseModel):
+    """Fill a login form with a scoped Vaultwarden entry.
+
+    The ``entry`` (a vault entry name or id) is resolved server-side via the
+    Bitwarden CLI; the fetched ``username`` / ``password`` are typed directly
+    into the given fields.  The secret is never echoed back — the response only
+    reports success and the current page URL.  Filling does NOT submit: the
+    separate human-gated ``/submit`` endpoint remains the only submit path.
+    """
+
+    entry: str
+    username_selector: str
+    password_selector: str
+
+
 class WaitRequest(BaseModel):
     """Wait for a selector and/or a page load state."""
 

@@ -1,0 +1,1 @@
+Add `POST /sessions/{id}/fill-credentials` endpoint that injects a scoped Vaultwarden (Bitwarden CLI) entry's username/password directly into the browser form fields, with zero secret leakage into responses, logs, or the agent. Scoped to a dedicated service account and a single collection; no TOTP/2FA; the human submit-gate is preserved.
