@@ -1,0 +1,40 @@
+# Central-deploy contract for robotsix-browser.
+#
+# robotsix-central-deploy consumes this file to build, register, and manage
+# the service. The `labels` block is the machine-readable contract: it
+# declares the contract version and how central-deploy should run the
+# service (deploy mode, the port it listens on, and its health-check path).
+#
+# Keep this in sync with the Dockerfile (build + EXPOSE) and __main__.py
+# (bind host/port). The service listens on 8000 and exposes GET /health.
+
+services:
+  robotsix-browser:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: robotsix-browser
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ROBOTSIX_BROWSER_HOST: "0.0.0.0"
+      ROBOTSIX_BROWSER_PORT: "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import sys, urllib.request;
+          sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health").status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    labels:
+      # Deploy contract consumed by robotsix-central-deploy.
+      central-deploy-contract-version: "1"
+      net.robotsix.deploy.mode: "service"
+      net.robotsix.deploy.port: "8000"
+      net.robotsix.deploy.health: "/health"
