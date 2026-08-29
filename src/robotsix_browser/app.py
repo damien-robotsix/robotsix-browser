@@ -206,9 +206,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             value=await operations.read_value(session.page, selector),
         )
 
-    @app.post(
-        "/sessions/{session_id}/fill-credentials", response_model=ActionResponse
-    )
+    @app.post("/sessions/{session_id}/fill-credentials", response_model=ActionResponse)
     async def fill_credentials(
         session_id: str,
         request: FillCredentialsRequest,
