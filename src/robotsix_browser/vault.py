@@ -1,6 +1,6 @@
-"""Scoped Vaultwarden (Bitwarden CLI) credential retrieval.
+"""Scoped Vaultwarden (Bitwarden API) credential retrieval.
 
-This module fetches a *single* vault entry via the Bitwarden CLI (``bw``) using
+This module fetches a *single* vault entry via the Bitwarden JSON API using
 an **API-key service account scoped to one collection**, and hands the resulting
 ``username`` / ``password`` to the browser-side fill path.
 
@@ -10,9 +10,9 @@ Security model (why this file exists):
   log line, or surfaced to the chat agent.  :class:`VaultCredential` redacts its
   password in ``repr`` so a stray ``log.info(cred)`` / traceback cannot leak it.
 * Authentication uses ``client_credentials`` (``client_id`` / ``client_secret``)
-  provisioned as env vars — never in code, never in the repo.  The unlock secret
-  is passed to ``bw`` via ``--passwordenv`` so it never appears on a process
-  argv.
+  provisioned as env vars — never in code, never in the repo.  The token is
+  obtained via ``POST /identity/connect/token`` with
+  ``grant_type=client_credentials``.
 * Access is **scoped to a single collection**.  An entry that is not a member of
   the provisioned collection is rejected with :class:`EntryOutOfScopeError`
   before any credential is extracted.
@@ -22,11 +22,10 @@ Security model (why this file exists):
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
 from dataclasses import dataclass
 from typing import Any
+
+import httpx
 
 from robotsix_browser.config import Settings
 
@@ -35,7 +34,7 @@ _REDACTED = "<redacted>"
 
 
 class VaultError(RuntimeError):
-    """Raised when a Bitwarden CLI operation fails."""
+    """Raised when a Bitwarden API operation fails."""
 
 
 class VaultNotConfiguredError(VaultError):
@@ -66,7 +65,7 @@ class VaultCredential:
 
 
 def _extract_credential(item: dict[str, Any], collection_id: str) -> VaultCredential:
-    """Validate scope and pull the login fields out of a ``bw`` item payload.
+    """Validate scope and pull the login fields out of a Bitwarden item payload.
 
     Raises :class:`EntryOutOfScopeError` when the item is not a member of the
     provisioned ``collection_id``, and :class:`VaultError` when it lacks a
@@ -86,7 +85,7 @@ def _extract_credential(item: dict[str, Any], collection_id: str) -> VaultCreden
 
 
 class VaultClient:
-    """Retrieves scoped credentials via the Bitwarden CLI (``bw``)."""
+    """Retrieves scoped credentials via the Bitwarden JSON API."""
 
     def __init__(
         self,
@@ -94,16 +93,15 @@ class VaultClient:
         server_url: str,
         client_id: str,
         client_secret: str,
-        unlock_secret: str,
         collection_id: str,
-        cli_path: str = "bw",
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._server_url = server_url
+        self._server_url = server_url.rstrip("/")
         self._client_id = client_id
         self._client_secret = client_secret
-        self._unlock_secret = unlock_secret
         self._collection_id = collection_id
-        self._cli_path = cli_path
+        self._access_token: str | None = None
+        self._transport = transport
 
     @classmethod
     def from_settings(cls, settings: Settings) -> VaultClient:
@@ -111,9 +109,7 @@ class VaultClient:
             server_url=settings.bw_server_url,
             client_id=settings.bw_client_id,
             client_secret=settings.bw_client_secret,
-            unlock_secret=settings.bw_unlock_secret,
             collection_id=settings.bw_collection_id,
-            cli_path=settings.bw_cli_path,
         )
 
     @property
@@ -124,7 +120,6 @@ class VaultClient:
                 self._server_url,
                 self._client_id,
                 self._client_secret,
-                self._unlock_secret,
                 self._collection_id,
             )
         )
@@ -139,69 +134,51 @@ class VaultClient:
             raise VaultNotConfiguredError(
                 "Vaultwarden credential injection is not configured"
             )
-        session = await self._ensure_session()
-        raw = await self._run_bw(
-            "get", "item", entry, session=session, allow_not_found=True
-        )
-        try:
-            item: dict[str, Any] = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise VaultError("could not parse the Bitwarden CLI item output") from exc
+        token = await self._get_token()
+        item = await self._get_item(entry, token)
         return _extract_credential(item, self._collection_id)
 
-    async def _ensure_session(self) -> str:
-        """Configure the server, log in via API key, and unlock; return session."""
-        await self._run_bw("config", "server", self._server_url)
-        try:
-            await self._run_bw(
-                "login",
-                "--apikey",
-                env_extra={
-                    "BW_CLIENTID": self._client_id,
-                    "BW_CLIENTSECRET": self._client_secret,
+    async def _get_token(self) -> str:
+        """Authenticate via ``client_credentials`` and return an access token."""
+        async with httpx.AsyncClient(transport=self._transport) as client:
+            resp = await client.post(
+                f"{self._server_url}/identity/connect/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                    "scope": "api",
                 },
             )
-        except VaultError as exc:
-            # A pre-existing login is fine — the unlock below still succeeds.
-            if "already logged in" not in str(exc).lower():
-                raise
-        return await self._run_bw(
-            "unlock",
-            "--passwordenv",
-            "BW_PASSWORD",
-            "--raw",
-            env_extra={"BW_PASSWORD": self._unlock_secret},
-        )
+            if resp.status_code != 200:
+                raise VaultError(f"token request failed with status {resp.status_code}")
+            token: str = resp.json()["access_token"]
+            return token
 
-    async def _run_bw(
-        self,
-        *args: str,
-        env_extra: dict[str, str] | None = None,
-        session: str | None = None,
-        allow_not_found: bool = False,
-    ) -> str:
-        """Run ``bw`` with the given args and return trimmed stdout.
-
-        Secrets are passed via the environment (``env_extra`` / ``BW_SESSION``),
-        never on argv.  ``stderr`` from ``bw`` never contains the password, so it
-        is safe to surface in a :class:`VaultError` message.
-        """
-        env = os.environ.copy()
-        if env_extra:
-            env.update(env_extra)
-        if session:
-            env["BW_SESSION"] = session
-        proc = await asyncio.create_subprocess_exec(
-            self._cli_path,
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            message = stderr.decode(errors="replace").strip()
-            if allow_not_found and "not found" in message.lower():
-                raise EntryNotFoundError("vault entry was not found")
-            raise VaultError(f"bw {args[0]} failed: {message}")
-        return stdout.decode(errors="replace").strip()
+    async def _get_item(self, entry: str, token: str) -> dict[str, Any]:
+        """Fetch a vault item by id, falling back to name search."""
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(transport=self._transport) as client:
+            # Try fetching by id first.
+            resp = await client.get(
+                f"{self._server_url}/api/items/{entry}",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                result: dict[str, Any] = resp.json()
+                return result
+            if resp.status_code != 404:
+                raise VaultError(f"item lookup failed with status {resp.status_code}")
+            # Fall back to listing and searching by name.
+            resp = await client.get(
+                f"{self._server_url}/api/items",
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                raise VaultError(f"item list failed with status {resp.status_code}")
+            items = resp.json().get("data", [])
+            for item in items:
+                if item.get("name") == entry:
+                    found: dict[str, Any] = item
+                    return found
+            raise EntryNotFoundError("vault entry was not found")

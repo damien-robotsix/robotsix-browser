@@ -59,9 +59,7 @@ Environment variables (prefix `ROBOTSIX_BROWSER_`):
 | `ROBOTSIX_BROWSER_BW_SERVER_URL`  | `""`                     | Vaultwarden server URL (Bitwarden API).   |
 | `ROBOTSIX_BROWSER_BW_CLIENT_ID`   | `""`                     | API-key `client_id` (`user.<uuid>`).      |
 | `ROBOTSIX_BROWSER_BW_CLIENT_SECRET` | `""`                   | API-key `client_secret` (masked).         |
-| `ROBOTSIX_BROWSER_BW_UNLOCK_SECRET` | `""`                   | Service-account master password (masked). |
 | `ROBOTSIX_BROWSER_BW_COLLECTION_ID` | `""`                   | The single collection the service reads.  |
-| `ROBOTSIX_BROWSER_BW_CLI_PATH`    | `bw`                     | Path to the Bitwarden CLI binary.         |
 
 The `BW_*` values are provisioned via the deploy EnvStore as masked container
 env vars — never committed, never echoed. When any required value is blank the
@@ -117,13 +115,12 @@ POST /sessions/{id}/fill-credentials
 
 Security model:
 
-- **Bitwarden CLI + API key.** The service authenticates to the operator's
-  Vaultwarden server (which speaks the Bitwarden API) via the `bw` CLI using
-  `client_credentials` (`client_id` = `user.<uuid>`, `client_secret`). Both, the
-  server URL, and the unlock secret come from env vars (see
-  [Configuration](#configuration)) — never in code, never in the repo. The
-  unlock secret is passed via `--passwordenv`, so it never appears on a process
-  argv.
+- **Bitwarden API + client credentials.** The service authenticates to the operator's
+  Vaultwarden server (which speaks the Bitwarden JSON API) via
+  `POST /identity/connect/token` with `grant_type=client_credentials`
+  (`client_id` = `user.<uuid>`, `client_secret`). Both values come from env vars
+  (see [Configuration](#configuration)) — never in code, never in the repo.  No
+  master password or unlock step is required.
 - **Dedicated service account + single collection.** The service is scoped to
   one provisioned collection. A request for an entry outside that collection
   fails cleanly with `403`; a missing entry returns `404`.
