@@ -15,6 +15,7 @@ from playwright.async_api import FilePayload, Locator, Page
 from robotsix_browser.filehub import FileHubClient
 from robotsix_browser.models import (
     ClickRequest,
+    FillCredentialsRequest,
     NavigateRequest,
     SelectRequest,
     StateResponse,
@@ -23,6 +24,7 @@ from robotsix_browser.models import (
     UploadRequest,
     WaitRequest,
 )
+from robotsix_browser.vault import VaultClient
 
 #: Schemes the service is willing to navigate to.  ``file:`` is deliberately
 #: excluded to avoid turning the service into a local-file reader.
@@ -100,6 +102,21 @@ async def upload(page: Page, request: UploadRequest, filehub: FileHubClient) -> 
         "buffer": file.content,
     }
     await page.set_input_files(request.selector, files=[payload])
+    return page.url
+
+
+async def fill_credentials(
+    page: Page, request: FillCredentialsRequest, vault: VaultClient
+) -> str:
+    """Fetch a scoped vault entry and fill the username / password fields.
+
+    The secret is typed directly into the browser field and is never returned.
+    This only fills the form — it does NOT submit, preserving the human
+    submit-gate (``/submit`` remains the sole submit path).
+    """
+    credential = await vault.get_credential(request.entry)
+    await page.fill(request.username_selector, credential.username)
+    await page.fill(request.password_selector, credential.password)
     return page.url
 
 

@@ -11,11 +11,17 @@ from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import FAKE_SECRET
+
 _FORM_HTML = (
     "<form><input id='name'>"
     "<select id='color'><option value='r'>Red</option>"
     "<option value='g'>Green</option></select>"
     "<input id='file' type='file'></form>"
+)
+
+_LOGIN_HTML = (
+    "<form><input id='user'><input id='pass' type='password'></form>"
 )
 
 
@@ -87,3 +93,46 @@ def test_upload_from_file_hub(browser_available: None, client: TestClient) -> No
     # A populated file input reports the attached filename via its value.
     value = client.get(f"/sessions/{session_id}/value", params={"selector": "#file"})
     assert value.json()["value"].endswith("upload.txt")
+
+
+def test_fill_credentials_injects_without_leaking(
+    browser_available: None, client: TestClient
+) -> None:
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)})
+
+    response = client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "ovh-portal",
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 200
+    # The secret must never appear in the response body.
+    assert FAKE_SECRET not in response.text
+
+    # The username is filled in the live session (proving injection ran; the
+    # password is filled in the same call but is deliberately not read back so
+    # the secret is never surfaced over HTTP).
+    user = client.get(f"/sessions/{session_id}/value", params={"selector": "#user"})
+    assert user.json()["value"] == "svc-ovh"
+
+
+def test_fill_credentials_out_of_scope_fails_cleanly(
+    browser_available: None, client: TestClient
+) -> None:
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)})
+
+    response = client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "not-in-my-collection",
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 403
+    assert FAKE_SECRET not in response.text
