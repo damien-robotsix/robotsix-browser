@@ -1,0 +1,1 @@
+deploy/docker-compose.yml now references the published GHCR image (ghcr.io/damien-robotsix/robotsix-browser:main), uses the fleet-standard robotsix.deploy.* label prefix, and drops the build and healthcheck sections (managed centrally by robotsix-central-deploy).
