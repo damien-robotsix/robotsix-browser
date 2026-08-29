@@ -61,6 +61,12 @@ class FakeVault:
 
 
 @pytest.fixture
+def fake_secret() -> str:
+    """The secret injected by :class:`FakeVault`; tests assert it never leaks."""
+    return FAKE_SECRET
+
+
+@pytest.fixture
 def fake_file() -> FileHubFile:
     return FileHubFile(
         name="upload.txt",

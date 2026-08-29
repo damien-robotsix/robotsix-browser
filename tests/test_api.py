@@ -11,8 +11,6 @@ from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import FAKE_SECRET
-
 _FORM_HTML = (
     "<form><input id='name'>"
     "<select id='color'><option value='r'>Red</option>"
@@ -20,9 +18,7 @@ _FORM_HTML = (
     "<input id='file' type='file'></form>"
 )
 
-_LOGIN_HTML = (
-    "<form><input id='user'><input id='pass' type='password'></form>"
-)
+_LOGIN_HTML = "<form><input id='user'><input id='pass' type='password'></form>"
 
 
 def _data_url(html: str) -> str:
@@ -96,10 +92,12 @@ def test_upload_from_file_hub(browser_available: None, client: TestClient) -> No
 
 
 def test_fill_credentials_injects_without_leaking(
-    browser_available: None, client: TestClient
+    browser_available: None, client: TestClient, fake_secret: str
 ) -> None:
     session_id = client.post("/sessions", json={}).json()["session_id"]
-    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)})
+    client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)}
+    )
 
     response = client.post(
         f"/sessions/{session_id}/fill-credentials",
@@ -111,7 +109,7 @@ def test_fill_credentials_injects_without_leaking(
     )
     assert response.status_code == 200
     # The secret must never appear in the response body.
-    assert FAKE_SECRET not in response.text
+    assert fake_secret not in response.text
 
     # The username is filled in the live session (proving injection ran; the
     # password is filled in the same call but is deliberately not read back so
@@ -121,10 +119,12 @@ def test_fill_credentials_injects_without_leaking(
 
 
 def test_fill_credentials_out_of_scope_fails_cleanly(
-    browser_available: None, client: TestClient
+    browser_available: None, client: TestClient, fake_secret: str
 ) -> None:
     session_id = client.post("/sessions", json={}).json()["session_id"]
-    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)})
+    client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(_LOGIN_HTML)}
+    )
 
     response = client.post(
         f"/sessions/{session_id}/fill-credentials",
@@ -135,4 +135,4 @@ def test_fill_credentials_out_of_scope_fails_cleanly(
         },
     )
     assert response.status_code == 403
-    assert FAKE_SECRET not in response.text
+    assert fake_secret not in response.text
