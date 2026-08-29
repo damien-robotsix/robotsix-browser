@@ -9,7 +9,8 @@ permission GitHub silently rejects the workflow file with a
 
 Usage as a standalone script (called from CI workflow)::
 
-    SARIF_WORKFLOWS="codeql.yml scan-container.yml" python3 scripts/lint_sarif_permissions.py
+    SARIF_WORKFLOWS="codeql.yml scan-container.yml" \
+        python3 scripts/lint_sarif_permissions.py
 
 Usage as an importable module (called from tests)::
 
@@ -28,9 +29,7 @@ try:
 except ImportError:
     import subprocess
 
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"]
-    )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
     import yaml
 
 
@@ -151,7 +150,5 @@ def check(
 
 if __name__ == "__main__":
     sarif_workflows_raw = os.environ.get("SARIF_WORKFLOWS", "")
-    sarif_set = {
-        w.strip() for w in sarif_workflows_raw.split() if w.strip()
-    }
+    sarif_set = {w.strip() for w in sarif_workflows_raw.split() if w.strip()}
     sys.exit(check(sarif_workflows=sarif_set))

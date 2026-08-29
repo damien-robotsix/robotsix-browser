@@ -60,6 +60,11 @@ jobs:
   # "Semgrep (SAST)" security item.)
   security:
     uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-security.yml@c0be17843fda25e199897042e4b2e06f5127e3b4  # main
+    with:
+      # This project defines no optional-dependency extras; override the
+      # reusable workflow's default `install-extras: tracing` so `uv sync`
+      # does not fail on an undefined extra.
+      install-extras: ""
     permissions:
       contents: read
 

@@ -28,21 +28,15 @@ try:
 except ImportError:
     import subprocess
 
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"]
-    )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
     import yaml
 
 # ---------------------------------------------------------------------------
 # Patterns for extracting event-name comparisons from if: expressions
 # ---------------------------------------------------------------------------
 
-_EVENT_EQ_RE = re.compile(
-    r"github\.event_name\s*==\s*'([^']+)'"
-)
-_EVENT_NEQ_RE = re.compile(
-    r"github\.event_name\s*!=\s*'([^']+)'"
-)
+_EVENT_EQ_RE = re.compile(r"github\.event_name\s*==\s*'([^']+)'")
+_EVENT_NEQ_RE = re.compile(r"github\.event_name\s*!=\s*'([^']+)'")
 
 
 def _extract_event_names(on_block: object) -> set[str]:
