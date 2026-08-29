@@ -12,6 +12,7 @@ modules:
       - .gitignore
       - .github/dependabot.yml
       - .github/workflows/ci.yml
+      - deploy/docker-compose.yml
       - docs/modules.yaml
       - vulture_whitelist.py
       - changelog.d/*.md
