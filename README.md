@@ -45,6 +45,12 @@ docker build -t robotsix-browser .
 docker run -p 8000:8000 robotsix-browser
 ```
 
+Or with Docker Compose:
+
+```bash
+docker-compose -f deploy/docker-compose.yml up
+```
+
 ### Configuration
 
 Environment variables (prefix `ROBOTSIX_BROWSER_`):
