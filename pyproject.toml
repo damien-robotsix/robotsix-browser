@@ -70,3 +70,6 @@ known_first_party = ["robotsix_browser"]
 [tool.deptry.per_rule_ignores]
 # Tooling invoked via CLI, never imported.
 DEP002 = ["ruff", "mypy", "deptry", "vulture", "mypy-baseline", "pytest-asyncio"]
+# Standalone CI lint scripts import PyYAML inside a try/except with a runtime
+# pip-install fallback, so it is deliberately not a declared project dependency.
+DEP001 = ["yaml"]
