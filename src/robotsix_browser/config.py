@@ -31,14 +31,9 @@ class Settings(BaseSettings):
     bw_client_id: str = ""
     #: API-key ``client_secret`` for the dedicated service account.
     bw_client_secret: str = ""
-    #: Unlock secret (the service account master password) used to derive a
-    #: ``BW_SESSION`` for reads.
-    bw_unlock_secret: str = ""
     #: The single collection id the service is scoped to.  Any entry outside
     #: this collection is rejected.
     bw_collection_id: str = ""
-    #: Path to the Bitwarden CLI binary.
-    bw_cli_path: str = "bw"
 
 
 def get_settings() -> Settings:
