@@ -1,0 +1,72 @@
+[project]
+name = "robotsix-browser"
+version = "0.1.0"
+description = "Interactive headless-browser / form-filling HTTP service for the robotsix fleet."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+authors = [{ name = "robotsix" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "playwright>=1.48",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+]
+
+[project.scripts]
+robotsix-browser = "robotsix_browser.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "deptry>=0.20",
+    "vulture>=2.13",
+    "mypy-baseline>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robotsix_browser"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are called in argument defaults by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+mypy_path = "src"
+packages = ["robotsix_browser"]
+
+[tool.vulture]
+# FastAPI route handlers and pydantic model fields look "unused" to static
+# analysis (they are invoked/populated by the framework).  Keep the high
+# confidence signal (unused imports/variables) and drop the 60% framework noise.
+min_confidence = 80
+
+[tool.deptry]
+known_first_party = ["robotsix_browser"]
+
+[tool.deptry.per_rule_ignores]
+# Tooling invoked via CLI, never imported.
+DEP002 = ["ruff", "mypy", "deptry", "vulture", "mypy-baseline", "pytest-asyncio"]
