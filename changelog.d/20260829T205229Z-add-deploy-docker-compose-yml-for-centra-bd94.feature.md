@@ -1,0 +1,1 @@
+Add `deploy/docker-compose.yml` fleet deploy contract so the central-deploy plane can register robotsix-browser as a managed deployment-system service (image `ghcr.io/damien-robotsix/robotsix-browser:main`, port 8000, health `/health`).

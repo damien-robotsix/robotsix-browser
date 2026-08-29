@@ -14,6 +14,7 @@ modules:
       - .github/workflows/ci.yml
       - deploy/docker-compose.yml
       - docs/modules.yaml
+      - deploy/docker-compose.yml
       - vulture_whitelist.py
       - changelog.d/*.md
 
