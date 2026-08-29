@@ -151,10 +151,9 @@ class VaultClient:
                 },
             )
             if resp.status_code != 200:
-                raise VaultError(
-                    f"token request failed with status {resp.status_code}"
-                )
-            return resp.json()["access_token"]
+                raise VaultError(f"token request failed with status {resp.status_code}")
+            token: str = resp.json()["access_token"]
+            return token
 
     async def _get_item(self, entry: str, token: str) -> dict[str, Any]:
         """Fetch a vault item by id, falling back to name search."""
@@ -166,22 +165,20 @@ class VaultClient:
                 headers=headers,
             )
             if resp.status_code == 200:
-                return resp.json()
+                result: dict[str, Any] = resp.json()
+                return result
             if resp.status_code != 404:
-                raise VaultError(
-                    f"item lookup failed with status {resp.status_code}"
-                )
+                raise VaultError(f"item lookup failed with status {resp.status_code}")
             # Fall back to listing and searching by name.
             resp = await client.get(
                 f"{self._server_url}/api/items",
                 headers=headers,
             )
             if resp.status_code != 200:
-                raise VaultError(
-                    f"item list failed with status {resp.status_code}"
-                )
+                raise VaultError(f"item list failed with status {resp.status_code}")
             items = resp.json().get("data", [])
             for item in items:
                 if item.get("name") == entry:
-                    return item
+                    found: dict[str, Any] = item
+                    return found
             raise EntryNotFoundError("vault entry was not found")

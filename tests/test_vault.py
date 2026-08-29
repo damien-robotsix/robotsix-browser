@@ -126,9 +126,7 @@ def test_get_credential_by_id() -> None:
 
 def test_get_credential_by_name_fallback() -> None:
     """When id lookup returns 404, falls back to listing and name search."""
-    item_payload = _item(
-        collection_ids=[_COLLECTION], username="bob", password=_SECRET
-    )
+    item_payload = _item(collection_ids=[_COLLECTION], username="bob", password=_SECRET)
     item_payload["name"] = "my-entry"
 
     def _handler(request: httpx.Request) -> httpx.Response:
