@@ -1,0 +1,36 @@
+# Canonical module-file manifest for robotsix-browser.
+# Every source / test / changelog file is registered under a module below.
+modules:
+  - name: core
+    description: Project configuration, packaging, CI, and changelog.
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - Dockerfile
+      - README.md
+      - .gitignore
+      - .github/workflows/ci.yml
+      - docs/modules.yaml
+      - vulture_whitelist.py
+      - changelog.d/*.md
+
+  - name: browser
+    description: The interactive headless-browser HTTP service.
+    paths:
+      - src/robotsix_browser/__init__.py
+      - src/robotsix_browser/__main__.py
+      - src/robotsix_browser/app.py
+      - src/robotsix_browser/config.py
+      - src/robotsix_browser/filehub.py
+      - src/robotsix_browser/models.py
+      - src/robotsix_browser/operations.py
+      - src/robotsix_browser/sessions.py
+
+  - name: tests
+    description: Test suite.
+    paths:
+      - tests/conftest.py
+      - tests/test_api.py
+      - tests/test_filehub.py
+      - tests/test_models.py
+      - tests/test_operations.py
