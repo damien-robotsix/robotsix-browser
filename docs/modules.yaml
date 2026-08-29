@@ -7,8 +7,10 @@ modules:
       - pyproject.toml
       - uv.lock
       - Dockerfile
+      - LICENSE
       - README.md
       - .gitignore
+      - .github/dependabot.yml
       - .github/workflows/ci.yml
       - docs/modules.yaml
       - vulture_whitelist.py
