@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
+      packages: write  # push the built image to GHCR (ghcr.io/damien-robotsix/robotsix-browser)
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
