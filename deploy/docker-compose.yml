@@ -1,6 +1,5 @@
+# central-deploy-contract-version: 1
 # Central-deploy contract for robotsix-browser.
-#
-# Contract version: 1
 #
 # robotsix-central-deploy consumes this file to register and manage the
 # service. The `labels` block is the machine-readable contract: it declares
