@@ -55,6 +55,43 @@ jobs:
       - name: Tests
         run: uv run pytest
 
+  # Build and publish the deployable container image (with the Playwright /
+  # Chromium runtime baked in by the Dockerfile) to GHCR. central-deploy pulls
+  # `ghcr.io/damien-robotsix/robotsix-browser:main` (see deploy/docker-compose.yml),
+  # so this job produces that pullable tag on every push to main. Runs only
+  # after the test job passes and never on pull requests.
+  publish:
+    name: Publish image
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write  # push the built image to GHCR (ghcr.io/damien-robotsix/robotsix-browser)
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+
+      - name: Build image
+        run: |
+          docker build \
+            -t ghcr.io/damien-robotsix/robotsix-browser:main \
+            -t "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push ghcr.io/damien-robotsix/robotsix-browser:main
+          docker push "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}"
+
   # Shared security gate: SAST + dependency CVE audit + secret scan + SBOM.
   # (fleet-wide reusable workflow — the SAST realization of the baseline's
   # "Semgrep (SAST)" security item.)
