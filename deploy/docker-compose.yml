@@ -25,4 +25,3 @@ services:
       robotsix.deploy.mode: "service"
       robotsix.deploy.port: "8000"
       robotsix.deploy.health: "/health"
-      robotsix.deploy.config-target: "config/config.schema.json"
