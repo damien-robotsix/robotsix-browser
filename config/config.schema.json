@@ -1,70 +1,46 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://robotsix.net/schemas/robotsix-browser/config.schema.json",
-  "title": "robotsix-browser configuration",
-  "description": "Runtime configuration for the robotsix-browser service. Values are supplied as ROBOTSIX_BROWSER_* environment variables (secrets are provisioned via the deploy EnvStore as masked container env vars).",
-  "type": "object",
-  "additionalProperties": false,
+  "description": "Typed configuration model for robotsix-browser.",
   "properties": {
-    "ROBOTSIX_BROWSER_HOST": {
+    "file_hub_base_url": {
+      "default": "http://localhost:8080",
+      "title": "File Hub Base Url",
+      "type": "string"
+    },
+    "headless": {
+      "default": true,
+      "title": "Headless",
+      "type": "boolean"
+    },
+    "default_timeout_ms": {
+      "default": 30000,
+      "title": "Default Timeout Ms",
+      "type": "integer"
+    },
+    "bw_server_url": {
+      "default": "",
+      "title": "Bw Server Url",
+      "type": "string"
+    },
+    "bw_client_id": {
+      "default": "",
+      "format": "password",
+      "title": "Bw Client Id",
       "type": "string",
-      "title": "Bind host",
-      "description": "Interface the HTTP API binds to.",
-      "default": "0.0.0.0"
+      "writeOnly": true
     },
-    "ROBOTSIX_BROWSER_PORT": {
-      "type": "integer",
-      "title": "Bind port",
-      "description": "TCP port the HTTP API listens on.",
-      "minimum": 1,
-      "maximum": 65535,
-      "default": 8000
-    },
-    "ROBOTSIX_BROWSER_FILE_HUB_BASE_URL": {
+    "bw_client_secret": {
+      "default": "",
+      "format": "password",
+      "title": "Bw Client Secret",
       "type": "string",
-      "format": "uri",
-      "title": "file-hub base URL",
-      "description": "Base URL of the robotsix-file-hub service used by the upload endpoint.",
-      "default": "http://localhost:8080"
+      "writeOnly": true
     },
-    "ROBOTSIX_BROWSER_HEADLESS": {
-      "type": "boolean",
-      "title": "Headless Chromium",
-      "description": "Launch Chromium headless. Always true in production; overridable in dev.",
-      "default": true
-    },
-    "ROBOTSIX_BROWSER_DEFAULT_TIMEOUT_MS": {
-      "type": "integer",
-      "title": "Default action timeout (ms)",
-      "description": "Default action timeout in milliseconds for page interactions.",
-      "minimum": 0,
-      "default": 30000
-    },
-    "ROBOTSIX_BROWSER_BW_SERVER_URL": {
-      "type": "string",
-      "title": "Vaultwarden server URL",
-      "description": "Vaultwarden server URL (Vaultwarden speaks the Bitwarden API). Required for the credential-fill endpoint.",
-      "default": ""
-    },
-    "ROBOTSIX_BROWSER_BW_CLIENT_ID": {
-      "type": "string",
-      "title": "Vaultwarden API-key client_id",
-      "description": "API-key client_id for the dedicated service account (user.<uuid>).",
-      "writeOnly": true,
-      "default": ""
-    },
-    "ROBOTSIX_BROWSER_BW_CLIENT_SECRET": {
-      "type": "string",
-      "title": "Vaultwarden API-key client_secret",
-      "description": "API-key client_secret for the dedicated service account. Masked; never echoed, logged, or returned.",
-      "writeOnly": true,
-      "default": ""
-    },
-    "ROBOTSIX_BROWSER_BW_COLLECTION_ID": {
-      "type": "string",
-      "title": "Vaultwarden collection id",
-      "description": "The single collection id the service is scoped to. Any entry outside this collection is rejected.",
-      "default": ""
+    "bw_collection_id": {
+      "default": "",
+      "title": "Bw Collection Id",
+      "type": "string"
     }
-  }
+  },
+  "title": "Settings",
+  "type": "object"
 }

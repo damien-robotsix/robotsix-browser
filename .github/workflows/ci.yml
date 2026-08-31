@@ -52,6 +52,20 @@ jobs:
       - name: Dead code
         run: uv run vulture --ignore-decorators "@field_validator,@model_validator" src/ vulture_whitelist.py
 
+      - name: Config schema sync
+        run: |
+          uv run python -c "
+          from robotsix_browser.config import Settings
+          from robotsix_config import config_schema_json
+          expected = config_schema_json(Settings)
+          with open('config/config.schema.json') as f:
+              actual = f.read()
+          if actual != expected:
+              print('config/config.schema.json is out of date.')
+              print('Run: uv run python -c \"from robotsix_browser.config import Settings; from robotsix_config import config_schema_json; open(\\\"config/config.schema.json\\\",\\\"w\\\").write(config_schema_json(Settings))\"')
+              raise SystemExit(1)
+          "
+
       - name: Tests
         run: uv run pytest
 
