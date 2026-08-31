@@ -3,7 +3,7 @@ name = "robotsix-browser"
 version = "0.1.0"
 description = "Interactive headless-browser / form-filling HTTP service for the robotsix fleet."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 license = { text = "MIT" }
 authors = [{ name = "robotsix" }]
 dependencies = [
@@ -14,6 +14,9 @@ dependencies = [
     "pydantic>=2.9",
     "robotsix-config>=0.1",
 ]
+
+[tool.uv.sources]
+robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "d29de204db62910f062456e5055fc2fe232e04a9" }
 
 [project.scripts]
 robotsix-browser = "robotsix_browser.__main__:main"
