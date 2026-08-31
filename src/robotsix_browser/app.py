@@ -23,10 +23,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
-from robotsix_browser import operations
+from robotsix_browser import chat_skill, operations
 from robotsix_browser.config import Settings, get_settings
 from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdError
 from robotsix_browser.models import (
@@ -102,6 +103,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/chat-skill")
+    async def chat_skill_doc() -> dict[str, Any]:
+        return chat_skill.chat_skill()
 
     @app.post("/sessions", response_model=SessionResponse)
     async def open_session(
