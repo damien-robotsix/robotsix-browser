@@ -21,4 +21,8 @@ RUN uv run playwright install --with-deps chromium
 
 EXPOSE 8000
 
-CMD ["uv", "run", "robotsix-browser"]
+# Invoke the venv entrypoint directly: `uv run` re-resolves the environment at
+# every container start and needs a writable uv cache — as the non-root runtime
+# uid it crash-loops on `failed to create directory /.cache/uv` (same class as
+# robotsix-file-hub PR #161). The venv is already complete after `uv sync`.
+CMD ["/app/.venv/bin/robotsix-browser"]
