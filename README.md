@@ -102,6 +102,24 @@ browser context (its own cookies / storage).
 | `POST /sessions/{id}/fill-credentials` | Inject a **scoped Vaultwarden entry** (never echoed). |
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
 
+The machine-readable skill document (endpoints, request/response shapes, and
+the confirmation-gated safety contract) is served at `GET /chat-skill` for a
+chat agent to discover the API surface.
+
+### Access & authentication
+
+The service itself is unauthenticated; access is mediated by the deploy edge.
+A chat-agent client has two ways to reach it:
+
+- **Internal (preferred).** On the shared `central-deploy-proxy` network the
+  service is reachable at `http://robotsix-browser:8000` with no edge auth
+  gate — no token required.
+- **Public edge.** `https://browser.deploy.robotsix.net` sits behind a
+  Tinyauth login gate. Programmatic callers bypass the interactive login by
+  sending an `Authorization: Bearer <token>` header (the mobile-token bypass
+  route). The token is provisioned to the chat agent as a **vaulted secret**
+  in its component config — never embedded in this repo.
+
 ### Human submit-gate
 
 The `submit` endpoint is deliberately kept separate from `click`. It is the

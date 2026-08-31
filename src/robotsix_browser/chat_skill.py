@@ -32,7 +32,38 @@ def chat_skill() -> dict[str, Any]:
         ),
         "base": {
             "port": 8000,
-            "health": "GET /health -> {\"status\": \"ok\"}",
+            "health": 'GET /health -> {"status": "ok"}',
+        },
+        "auth": {
+            "description": (
+                "The service itself is unauthenticated; access is mediated by "
+                "the deploy edge.  A chat agent has two ways to reach it."
+            ),
+            "internal": {
+                "preferred": True,
+                "network": "central-deploy-proxy",
+                "base_url": "http://robotsix-browser:8000",
+                "note": (
+                    "Preferred path: on the shared central-deploy-proxy "
+                    "network the service is reachable at its internal address "
+                    "with no edge auth gate.  No token required."
+                ),
+            },
+            "public_edge": {
+                "base_url": "https://browser.deploy.robotsix.net",
+                "gate": "tinyauth",
+                "programmatic_bypass": {
+                    "header": "Authorization: Bearer <token>",
+                    "note": (
+                        "The public edge sits behind a Tinyauth login gate. "
+                        "Programmatic callers bypass the interactive login by "
+                        "sending a Bearer token (the mobile-token bypass "
+                        "route).  The token is provisioned to the chat agent "
+                        "as a vaulted secret in its component config; it is "
+                        "never embedded in this document or the repo."
+                    ),
+                },
+            },
         },
         "sessions": {
             "open": {
@@ -54,7 +85,9 @@ def chat_skill() -> dict[str, Any]:
                 "path": "/sessions/{id}/navigate",
                 "request": {
                     "url": "str (http/https/data/about)",
-                    "wait_until": "load | domcontentloaded | networkidle | commit (default load)",
+                    "wait_until": (
+                        "load | domcontentloaded | networkidle | commit (default load)"
+                    ),
                 },
                 "response": {"status": "ok", "url": "str"},
             },

@@ -36,6 +36,19 @@ def test_unknown_session_returns_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_chat_skill_document(client: TestClient) -> None:
+    doc = client.get("/chat-skill").json()
+    assert doc["component"] == "robotsix-browser"
+    assert doc["base"]["port"] == 8000
+    # Every state-mutating action is confirmation-gated; reads are not.
+    assert "submit" in doc["safety"]["confirmation_gated"]
+    assert set(doc["safety"]["read_only"]) == {"state", "value"}
+    # The programmatic auth path is documented for the chat agent.
+    assert doc["auth"]["internal"]["network"] == "central-deploy-proxy"
+    bypass = doc["auth"]["public_edge"]["programmatic_bypass"]
+    assert bypass["header"].lower().startswith("authorization: bearer")
+
+
 def test_smoke_fill_and_read_back(browser_available: None, client: TestClient) -> None:
     session_id = client.post("/sessions", json={}).json()["session_id"]
 
