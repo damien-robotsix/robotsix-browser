@@ -10,6 +10,14 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
+# git is required at BUILD time only: robotsix-config is a git dependency in
+# pyproject.toml, and uv shells out to git to fetch it. python:*-slim ships
+# without git, so `uv sync` fails with "Git operation failed" (same lesson as
+# robotsix-file-hub's Dockerfile).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first for better layer caching.
 COPY pyproject.toml uv.lock* README.md ./
 COPY src ./src
