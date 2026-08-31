@@ -107,8 +107,8 @@ class VaultClient:
     def from_settings(cls, settings: Settings) -> VaultClient:
         return cls(
             server_url=settings.bw_server_url,
-            client_id=settings.bw_client_id,
-            client_secret=settings.bw_client_secret,
+            client_id=settings.bw_client_id.get_secret_value(),
+            client_secret=settings.bw_client_secret.get_secret_value(),
             collection_id=settings.bw_collection_id,
         )
 

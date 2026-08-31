@@ -47,23 +47,40 @@ docker run -p 8000:8000 robotsix-browser
 
 ### Configuration
 
-Environment variables (prefix `ROBOTSIX_BROWSER_`):
+Configuration lives in a single JSON file located by the `ROBOTSIX_CONFIG_FILE`
+environment variable (default: `config/config.json`).  There is **no**
+environment overlay — the file (plus model defaults) is the sole source of
+truth.  Secrets use pydantic `SecretStr` and are masked in repr / logs.
 
-| Variable                          | Default                  | Purpose                                   |
-| --------------------------------- | ------------------------ | ----------------------------------------- |
-| `ROBOTSIX_BROWSER_FILE_HUB_BASE_URL` | `http://localhost:8080` | Base URL of robotsix-file-hub (uploads).  |
-| `ROBOTSIX_BROWSER_HEADLESS`       | `true`                   | Launch Chromium headless.                 |
-| `ROBOTSIX_BROWSER_DEFAULT_TIMEOUT_MS` | `30000`             | Default action timeout.                   |
-| `ROBOTSIX_BROWSER_HOST`           | `0.0.0.0`                | Bind host.                                |
-| `ROBOTSIX_BROWSER_PORT`           | `8000`                   | Bind port.                                |
-| `ROBOTSIX_BROWSER_BW_SERVER_URL`  | `""`                     | Vaultwarden server URL (Bitwarden API).   |
-| `ROBOTSIX_BROWSER_BW_CLIENT_ID`   | `""`                     | API-key `client_id` (`user.<uuid>`).      |
-| `ROBOTSIX_BROWSER_BW_CLIENT_SECRET` | `""`                   | API-key `client_secret` (masked).         |
-| `ROBOTSIX_BROWSER_BW_COLLECTION_ID` | `""`                   | The single collection the service reads.  |
+| Field                 | Default              | Type        | Purpose                                   |
+| --------------------- | -------------------- | ----------- | ----------------------------------------- |
+| `file_hub_base_url`   | `http://localhost:8080` | `string` | Base URL of robotsix-file-hub (uploads).  |
+| `headless`            | `true`               | `boolean`   | Launch Chromium headless.                 |
+| `default_timeout_ms`  | `30000`              | `integer`   | Default action timeout.                   |
+| `bw_server_url`       | `""`                 | `string`    | Vaultwarden server URL (Bitwarden API).   |
+| `bw_client_id`        | `""`                 | `SecretStr` | API-key `client_id` (`user.<uuid>`).      |
+| `bw_client_secret`    | `""`                 | `SecretStr` | API-key `client_secret` (masked).         |
+| `bw_collection_id`    | `""`                 | `string`    | The single collection the service reads.  |
 
-The `BW_*` values are provisioned via the deploy EnvStore as masked container
-env vars — never committed, never echoed. When any required value is blank the
-credential-fill endpoint responds `503` (not configured).
+Example `config.json`:
+
+```json
+{
+  "file_hub_base_url": "http://file-hub:8080",
+  "bw_server_url": "https://vault.example",
+  "bw_client_id": "user.XXXX",
+  "bw_client_secret": "secret",
+  "bw_collection_id": "col-XXXX"
+}
+```
+
+The `BW_*` secrets are written into the config file (permissions `0600`,
+inside a `0700` directory) — never committed, never echoed.  When any
+required value is blank the credential-fill endpoint responds `503` (not
+configured).
+
+Bind location (`ROBOTSIX_BROWSER_HOST` / `ROBOTSIX_BROWSER_PORT`) is set
+via environment variables for uvicorn — these are **not** config values.
 
 ## API
 
@@ -118,9 +135,9 @@ Security model:
 - **Bitwarden API + client credentials.** The service authenticates to the operator's
   Vaultwarden server (which speaks the Bitwarden JSON API) via
   `POST /identity/connect/token` with `grant_type=client_credentials`
-  (`client_id` = `user.<uuid>`, `client_secret`). Both values come from env vars
-  (see [Configuration](#configuration)) — never in code, never in the repo.  No
-  master password or unlock step is required.
+  (`client_id` = `user.<uuid>`, `client_secret`). Both values come from the
+  JSON config file (see [Configuration](#configuration)) — never in code,
+  never in the repo.  No master password or unlock step is required.
 - **Dedicated service account + single collection.** The service is scoped to
   one provisioned collection. A request for an entry outside that collection
   fails cleanly with `403`; a missing entry returns `404`.
