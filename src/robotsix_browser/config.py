@@ -35,6 +35,12 @@ class Settings(BaseModel):
     bw_client_id: SecretStr = SecretStr("")
     #: API-key ``client_secret`` for the dedicated service account.
     bw_client_secret: SecretStr = SecretStr("")
+    #: Vaultwarden device parameters sent with the API-key token request.
+    #: These are stable, non-secret identifiers for the service.
+    #: ``bw_device_type`` is the Vaultwarden DeviceType enum (0 = Cli).
+    bw_device_type: int = 0
+    bw_device_identifier: str = "robotsix-browser"
+    bw_device_name: str = "robotsix-browser"
     #: The single collection id the service is scoped to.  Any entry outside
     #: this collection is rejected.
     bw_collection_id: str = ""
