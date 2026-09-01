@@ -47,7 +47,7 @@ def _sanitize_upstream_error_body(
     """
     try:
         body = resp.text
-    except UnicodeDecodeError, ValueError:
+    except (UnicodeDecodeError, ValueError):
         body = f"<non-text response of {len(resp.content)} bytes>"
     for secret in secrets:
         if secret:
