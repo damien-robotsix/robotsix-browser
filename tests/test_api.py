@@ -7,9 +7,15 @@ when no browser binary is installed.
 
 from __future__ import annotations
 
+import logging
+from types import SimpleNamespace
 from urllib.parse import quote
 
+import pytest
 from fastapi.testclient import TestClient
+
+from robotsix_browser.app import get_manager, get_vault
+from robotsix_browser.vault import VaultUpstreamError
 
 _FORM_HTML = (
     "<form><input id='name'>"
@@ -149,3 +155,43 @@ def test_fill_credentials_out_of_scope_fails_cleanly(
     )
     assert response.status_code == 403
     assert fake_secret not in response.text
+
+
+def test_fill_credentials_upstream_failure_surfaces_safe_reason(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A vault upstream failure yields a 502 with the status + safe reason,
+    and logs the same information without leaking secrets."""
+
+    class _FailingVault:
+        async def get_credential(self, entry: str) -> None:
+            raise VaultUpstreamError(
+                502, "Bad Gateway: upstream vault down", "token request"
+            )
+
+    class _FakeManager:
+        def get(self, session_id: str) -> SimpleNamespace:
+            return SimpleNamespace(page=object())
+
+    client.app.dependency_overrides[get_manager] = _FakeManager
+    client.app.dependency_overrides[get_vault] = _FailingVault
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(
+            "/sessions/s1/fill-credentials",
+            json={
+                "entry": "ovh-portal",
+                "username_selector": "#user",
+                "password_selector": "#pass",
+            },
+        )
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "upstream HTTP 502" in detail
+    assert "Bad Gateway: upstream vault down" in detail
+    assert any(
+        "upstream HTTP 502" in record.getMessage()
+        and "Bad Gateway" in record.getMessage()
+        for record in caplog.records
+    )

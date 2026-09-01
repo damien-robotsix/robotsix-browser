@@ -32,6 +32,31 @@ from robotsix_browser.config import Settings
 #: Placeholder rendered wherever a password would otherwise be shown.
 _REDACTED = "<redacted>"
 
+#: Maximum length of an upstream error-body excerpt surfaced to callers.
+_MAX_UPSTREAM_REASON_CHARS = 200
+
+
+def _sanitize_upstream_error_body(
+    resp: httpx.Response, secrets: tuple[str, ...]
+) -> str:
+    """Return a safe, truncated excerpt of an upstream error response body.
+
+    Any occurrence of the provided secrets (client secret, access token) is
+    redacted and whitespace is collapsed, so the excerpt can never leak
+    credentials into logs or API error details.
+    """
+    try:
+        body = resp.text
+    except UnicodeDecodeError, ValueError:
+        body = f"<non-text response of {len(resp.content)} bytes>"
+    for secret in secrets:
+        if secret:
+            body = body.replace(secret, _REDACTED)
+    body = " ".join(body.split())
+    if len(body) > _MAX_UPSTREAM_REASON_CHARS:
+        body = f"{body[:_MAX_UPSTREAM_REASON_CHARS]}..."
+    return body or f"<empty error body (HTTP {resp.status_code})>"
+
 
 class VaultError(RuntimeError):
     """Raised when a Bitwarden API operation fails."""
@@ -47,6 +72,20 @@ class EntryNotFoundError(VaultError):
 
 class EntryOutOfScopeError(VaultError):
     """Raised when the entry is not in the service's provisioned collection."""
+
+
+class VaultUpstreamError(VaultError):
+    """Raised when the Vaultwarden server returns a non-success response.
+
+    Carries the upstream HTTP status code and a sanitized excerpt of the
+    error body so callers can surface a safe, diagnosable reason without
+    exposing secrets.
+    """
+
+    def __init__(self, status_code: int, reason: str, operation: str) -> None:
+        super().__init__(f"{operation} failed with HTTP status {status_code}: {reason}")
+        self.status_code = status_code
+        self.reason = reason
 
 
 @dataclass(slots=True)
@@ -163,7 +202,11 @@ class VaultClient:
                 },
             )
             if resp.status_code != 200:
-                raise VaultError(f"token request failed with status {resp.status_code}")
+                raise VaultUpstreamError(
+                    resp.status_code,
+                    _sanitize_upstream_error_body(resp, (self._client_secret,)),
+                    "token request",
+                )
             token: str = resp.json()["access_token"]
             return token
 
@@ -180,14 +223,22 @@ class VaultClient:
                 result: dict[str, Any] = resp.json()
                 return result
             if resp.status_code != 404:
-                raise VaultError(f"item lookup failed with status {resp.status_code}")
+                raise VaultUpstreamError(
+                    resp.status_code,
+                    _sanitize_upstream_error_body(resp, (self._client_secret, token)),
+                    "item lookup",
+                )
             # Fall back to listing and searching by name.
             resp = await client.get(
                 f"{self._server_url}/api/items",
                 headers=headers,
             )
             if resp.status_code != 200:
-                raise VaultError(f"item list failed with status {resp.status_code}")
+                raise VaultUpstreamError(
+                    resp.status_code,
+                    _sanitize_upstream_error_body(resp, (self._client_secret, token)),
+                    "item list",
+                )
             items = resp.json().get("data", [])
             for item in items:
                 if item.get("name") == entry:
