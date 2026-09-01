@@ -94,12 +94,18 @@ class VaultClient:
         client_id: str,
         client_secret: str,
         collection_id: str,
+        device_type: int = 0,
+        device_identifier: str = "robotsix-browser",
+        device_name: str = "robotsix-browser",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._server_url = server_url.rstrip("/")
         self._client_id = client_id
         self._client_secret = client_secret
         self._collection_id = collection_id
+        self._device_type = device_type
+        self._device_identifier = device_identifier
+        self._device_name = device_name
         self._access_token: str | None = None
         self._transport = transport
 
@@ -110,6 +116,9 @@ class VaultClient:
             client_id=settings.bw_client_id.get_secret_value(),
             client_secret=settings.bw_client_secret.get_secret_value(),
             collection_id=settings.bw_collection_id,
+            device_type=settings.bw_device_type,
+            device_identifier=settings.bw_device_identifier,
+            device_name=settings.bw_device_name,
         )
 
     @property
@@ -148,6 +157,9 @@ class VaultClient:
                     "client_id": self._client_id,
                     "client_secret": self._client_secret,
                     "scope": "api",
+                    "deviceType": self._device_type,
+                    "deviceIdentifier": self._device_identifier,
+                    "deviceName": self._device_name,
                 },
             )
             if resp.status_code != 200:

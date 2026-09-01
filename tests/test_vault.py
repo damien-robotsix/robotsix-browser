@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -197,3 +198,47 @@ def test_get_credential_token_failure() -> None:
 
     with pytest.raises(VaultError, match="token request failed"):
         asyncio.run(_run())
+
+
+def test_token_request_includes_device_params() -> None:
+    """The client-credentials token request carries the device parameters."""
+    item_payload = _item(
+        collection_ids=[_COLLECTION], username="alice", password=_SECRET
+    )
+    captured: dict[str, str] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            captured.update(
+                {
+                    key: values[0]
+                    for key, values in parse_qs(request.content.decode()).items()
+                }
+            )
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        if str(request.url).endswith(f"/api/items/{item_payload['id']}"):
+            return httpx.Response(200, json=item_payload)
+        return httpx.Response(404)
+
+    async def _run() -> None:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            device_type=0,
+            device_identifier="robotsix-browser-service",
+            device_name="robotsix-browser",
+            transport=httpx.MockTransport(_handler),
+        )
+        await client.get_credential("entry-1")
+
+    asyncio.run(_run())
+
+    assert captured["grant_type"] == "client_credentials"
+    assert captured["client_id"] == "user.abc"
+    assert captured["client_secret"] == "shh"
+    assert captured["scope"] == "api"
+    assert captured["deviceType"] == "0"
+    assert captured["deviceIdentifier"] == "robotsix-browser-service"
+    assert captured["deviceName"] == "robotsix-browser"
