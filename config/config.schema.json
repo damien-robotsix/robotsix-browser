@@ -35,6 +35,21 @@
       "type": "string",
       "writeOnly": true
     },
+    "bw_device_type": {
+      "default": 0,
+      "title": "Bw Device Type",
+      "type": "integer"
+    },
+    "bw_device_identifier": {
+      "default": "robotsix-browser",
+      "title": "Bw Device Identifier",
+      "type": "string"
+    },
+    "bw_device_name": {
+      "default": "robotsix-browser",
+      "title": "Bw Device Name",
+      "type": "string"
+    },
     "bw_collection_id": {
       "default": "",
       "title": "Bw Collection Id",
