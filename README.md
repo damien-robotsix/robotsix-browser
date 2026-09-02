@@ -82,6 +82,18 @@ configured).
 Bind location (`ROBOTSIX_BROWSER_HOST` / `ROBOTSIX_BROWSER_PORT`) is set
 via environment variables for uvicorn — these are **not** config values.
 
+## Configuration changes
+
+**Rule:** When adding or changing a field on the `Settings` model in
+`src/robotsix_browser/config.py`, regenerate the committed
+`config/config.schema.json` **in the same commit** via:
+
+```bash
+uv run python -c "from robotsix_browser.config import Settings; from robotsix_config import config_schema_json; open('config/config.schema.json','w').write(config_schema_json(Settings))"
+```
+
+The CI gate (`.github/workflows/ci.yml`) fails otherwise.
+
 ## API
 
 All interactions are **session-scoped**: each session is an isolated Playwright
