@@ -85,9 +85,7 @@ def test_linkedin_fill_credentials_end_to_end(browser_available: None) -> None:
         session_id = client.post("/sessions", json={}).json()["session_id"]
 
         login_url = _data_url(_LOGIN_HTML)
-        nav = client.post(
-            f"/sessions/{session_id}/navigate", json={"url": login_url}
-        )
+        nav = client.post(f"/sessions/{session_id}/navigate", json={"url": login_url})
         assert nav.status_code == 200
 
         response = client.post(
@@ -116,8 +114,6 @@ def test_linkedin_fill_credentials_end_to_end(browser_available: None) -> None:
         # the credential was retrieved and injected.  The password is filled in
         # the same call but is deliberately never read back, so the secret is
         # never surfaced over HTTP.
-        user = client.get(
-            f"/sessions/{session_id}/value", params={"selector": "#user"}
-        )
+        user = client.get(f"/sessions/{session_id}/value", params={"selector": "#user"})
         assert user.status_code == 200
         assert user.json()["value"], "username field was not populated"
