@@ -186,6 +186,67 @@ class VaultClient:
         item = await self._get_item(entry, token)
         return _extract_credential(item, self._collection_id)
 
+    async def list_collections(self) -> list[dict[str, str]]:
+        """List read-only metadata (``id``, ``name``) of collections the scoped
+        API key can see.
+
+        Only non-secret fields are returned; the raw upstream payload is
+        discarded so no secret can leak into the response.
+        """
+        if not self.is_configured:
+            raise VaultNotConfiguredError(
+                "Vaultwarden credential injection is not configured"
+            )
+        token = await self._get_token()
+        collections = await self._list_metadata(
+            "/api/collections", token, "collection list"
+        )
+        return [
+            {"id": item["id"], "name": item.get("name", "")}
+            for item in collections
+            if item.get("id")
+        ]
+
+    async def list_items(self) -> list[dict[str, str]]:
+        """List read-only metadata (``id``, ``name``) of items the scoped API
+        key can see.
+
+        Only ``id`` and ``name`` are extracted; passwords, secure-note
+        contents, and custom field values are never touched or returned.
+        """
+        if not self.is_configured:
+            raise VaultNotConfiguredError(
+                "Vaultwarden credential injection is not configured"
+            )
+        token = await self._get_token()
+        items = await self._list_metadata("/api/items", token, "item list")
+        return [
+            {"id": item["id"], "name": item.get("name", "")}
+            for item in items
+            if item.get("id")
+        ]
+
+    async def _list_metadata(
+        self, path: str, token: str, operation: str
+    ) -> list[dict[str, Any]]:
+        """Fetch a Bitwarden ``data`` list endpoint for read-only diagnostics.
+
+        On a non-success response raises :class:`VaultUpstreamError` carrying a
+        sanitized status/reason so callers can surface a safe, diagnosable
+        error instead of a generic 502.
+        """
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(transport=self._transport) as client:
+            resp = await client.get(f"{self._server_url}{path}", headers=headers)
+        if resp.status_code != 200:
+            raise VaultUpstreamError(
+                resp.status_code,
+                _sanitize_upstream_error_body(resp, (self._client_secret, token)),
+                operation,
+            )
+        data: list[dict[str, Any]] = resp.json().get("data", [])
+        return data
+
     async def _get_token(self) -> str:
         """Authenticate via ``client_credentials`` and return an access token."""
         async with httpx.AsyncClient(transport=self._transport) as client:

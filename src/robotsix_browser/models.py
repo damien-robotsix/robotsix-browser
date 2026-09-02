@@ -106,6 +106,40 @@ class ValueResponse(BaseModel):
     value: str
 
 
+class VaultCollectionInfo(BaseModel):
+    """Non-secret metadata for a vault collection visible to the scoped key.
+
+    Deliberately exposes only ``id`` and ``name`` — never any secret value.
+    """
+
+    id: str
+    name: str
+
+
+class VaultCollectionsResponse(BaseModel):
+    """Read-only collection metadata visible to the scoped API key."""
+
+    collections: list[VaultCollectionInfo]
+
+
+class VaultItemInfo(BaseModel):
+    """Non-secret metadata for a vault item visible to the scoped key.
+
+    Deliberately excludes every secret-bearing field (``login.password``,
+    secure-note contents, hidden custom-field values, ...) so the response
+    schema can never carry a secret.
+    """
+
+    id: str
+    name: str
+
+
+class VaultItemsResponse(BaseModel):
+    """Read-only item metadata visible to the scoped API key."""
+
+    items: list[VaultItemInfo]
+
+
 class StateResponse(BaseModel):
     """Current page state: ARIA accessibility tree + full-page screenshot.
 

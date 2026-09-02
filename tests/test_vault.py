@@ -272,3 +272,157 @@ def test_token_request_includes_device_params() -> None:
     assert captured["deviceType"] == "0"
     assert captured["deviceIdentifier"] == "robotsix-browser-service"
     assert captured["deviceName"] == "robotsix-browser"
+
+
+def test_list_collections_returns_only_metadata() -> None:
+    """Collections are listed as id/name metadata — never extra fields."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        if str(request.url).endswith("/api/collections"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "8cd27f39-60dc-4dae-b9ef-00bba3f75f2d",
+                            "name": "provisioned",
+                            "externalId": "x",
+                            "organizationId": "org-1",
+                        },
+                        {"id": "col-2", "name": "second"},
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    async def _run() -> list[dict[str, str]]:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            transport=httpx.MockTransport(_handler),
+        )
+        return await client.list_collections()
+
+    result = asyncio.run(_run())
+    assert result == [
+        {"id": "8cd27f39-60dc-4dae-b9ef-00bba3f75f2d", "name": "provisioned"},
+        {"id": "col-2", "name": "second"},
+    ]
+
+
+def test_list_items_returns_only_id_name_no_secrets() -> None:
+    """Items expose only id/name; passwords, notes and custom fields are dropped."""
+    password = "hunter2"  # noqa: S105 - test fixture
+    notes = "super secret secure-note contents"
+    hidden_field = "custom-hidden-value"
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        if str(request.url).endswith("/api/items"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "item-1",
+                            "name": "linkedin.com",
+                            "collectionIds": [_COLLECTION],
+                            "login": {
+                                "username": "alice@example.com",
+                                "password": password,
+                            },
+                            "secureNote": {"type": 2, "notes": notes},
+                            "fields": [
+                                {
+                                    "name": "totp",
+                                    "value": hidden_field,
+                                    "hidden": True,
+                                }
+                            ],
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    async def _run() -> list[dict[str, str]]:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            transport=httpx.MockTransport(_handler),
+        )
+        return await client.list_items()
+
+    result = asyncio.run(_run())
+    assert result == [{"id": "item-1", "name": "linkedin.com"}]
+    joined = " ".join(str(v) for item in result for v in item.values())
+    assert password not in joined
+    assert notes not in joined
+    assert hidden_field not in joined
+
+
+def test_list_collections_unconfigured_raises() -> None:
+    client = VaultClient.from_settings(Settings())
+    with pytest.raises(VaultNotConfiguredError):
+        asyncio.run(client.list_collections())
+    with pytest.raises(VaultNotConfiguredError):
+        asyncio.run(client.list_items())
+
+
+def test_list_collections_upstream_failure_surfaces_safe_reason() -> None:
+    """A failing collection fetch surfaces a safe upstream status/reason."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        return httpx.Response(401, text="unauthorized tok-123 shh")
+
+    async def _run() -> None:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            transport=httpx.MockTransport(_handler),
+        )
+        await client.list_collections()
+
+    with pytest.raises(VaultUpstreamError, match="collection list failed") as exc:
+        asyncio.run(_run())
+    assert exc.value.status_code == 401
+    assert "unauthorized" in exc.value.reason
+    assert "shh" not in str(exc.value)
+    assert "tok-123" not in str(exc.value)
+
+
+def test_list_items_upstream_failure_surfaces_safe_reason() -> None:
+    """A failing item fetch surfaces a safe upstream status/reason."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        return httpx.Response(403, text="forbidden tok-123 shh")
+
+    async def _run() -> None:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            transport=httpx.MockTransport(_handler),
+        )
+        await client.list_items()
+
+    with pytest.raises(VaultUpstreamError, match="item list failed") as exc:
+        asyncio.run(_run())
+    assert exc.value.status_code == 403
+    assert "forbidden" in exc.value.reason
+    assert "shh" not in str(exc.value)
+    assert "tok-123" not in str(exc.value)
