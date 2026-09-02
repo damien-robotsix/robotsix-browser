@@ -35,6 +35,15 @@ class Settings(BaseModel):
     bw_client_id: SecretStr = SecretStr("")
     #: API-key ``client_secret`` for the dedicated service account.
     bw_client_secret: SecretStr = SecretStr("")
+    #: Account email of the service account.  Used as the KDF salt when
+    #: deriving the vault symmetric key (Bitwarden salts the master-key KDF
+    #: with the lower-cased email), so unlock/decrypt cannot work without it.
+    bw_email: str = ""
+    #: Master password of the service account.  The ``client_credentials``
+    #: flow returns an access token but *not* the vault decryption key, so the
+    #: master password is required to unlock the vault and decrypt cipher
+    #: fields (name / username / password).  Never logged or returned.
+    bw_master_password: SecretStr = SecretStr("")
     #: Vaultwarden device parameters sent with the API-key token request.
     #: These are stable, non-secret identifiers for the service.
     #: ``bw_device_type`` is the Vaultwarden DeviceType enum (0 = Cli).
