@@ -203,8 +203,7 @@ def test_vault_collections_lists_only_metadata(client: TestClient) -> None:
     body = response.json()
     assert "collections" in body
     assert any(
-        c == {"id": "col-123", "name": "test-collection"}
-        for c in body["collections"]
+        c == {"id": "col-123", "name": "test-collection"} for c in body["collections"]
     )
 
 

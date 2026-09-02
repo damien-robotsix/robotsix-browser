@@ -66,8 +66,7 @@ class FakeVault:
     async def list_items(self) -> list[dict[str, str]]:
         """Read-only metadata (id/name) for the in-scope entries."""
         return [
-            {"id": f"item-{i}", "name": name}
-            for i, name in enumerate(self._entries)
+            {"id": f"item-{i}", "name": name} for i, name in enumerate(self._entries)
         ]
 
 
