@@ -167,11 +167,30 @@ def chat_skill() -> dict[str, Any]:
                 },
                 "response": {"status": "ok", "url": "str"},
                 "note": (
-                    "Resolves the scoped Vaultwarden entry server-side; "
+                    "Resolves the scoped Vaultwarden entry server-side: the "
+                    "vault is enumerated via GET /api/sync and unlocked with "
+                    "the configured master password to decrypt the entry. "
                     "username/password are typed directly into the fields and "
                     "are never returned, logged, or surfaced to the agent. "
                     "Only fills the form; it never submits."
                 ),
+            },
+        },
+        "vault_diagnostics": {
+            "description": (
+                "Read-only reachability checks for the scoped Vaultwarden "
+                "collection.  Both return only decrypted ids/names — never "
+                "usernames, passwords, or any secret value."
+            ),
+            "collections": {
+                "method": "GET",
+                "path": "/vault/collections",
+                "response": {"collections": "[{id, name}] (name decrypted)"},
+            },
+            "items": {
+                "method": "GET",
+                "path": "/vault/items",
+                "response": {"items": "[{id, name}] (name decrypted, no secrets)"},
             },
         },
         "submit": {
@@ -206,6 +225,11 @@ def chat_skill() -> dict[str, Any]:
                 "fill_credentials",
                 "submit",
             ],
-            "read_only": ["state", "value"],
+            "read_only": [
+                "state",
+                "value",
+                "vault_diagnostics.collections",
+                "vault_diagnostics.items",
+            ],
         },
     }

@@ -35,6 +35,18 @@
       "type": "string",
       "writeOnly": true
     },
+    "bw_email": {
+      "default": "",
+      "title": "Bw Email",
+      "type": "string"
+    },
+    "bw_master_password": {
+      "default": "",
+      "format": "password",
+      "title": "Bw Master Password",
+      "type": "string",
+      "writeOnly": true
+    },
     "bw_device_type": {
       "default": 0,
       "title": "Bw Device Type",

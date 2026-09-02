@@ -12,6 +12,7 @@ dependencies = [
     "playwright>=1.48",
     "httpx>=0.27",
     "pydantic>=2.9",
+    "cryptography>=44",
     "robotsix-config>=0.1",
 ]
 

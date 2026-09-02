@@ -13,6 +13,11 @@ Security model (why this file exists):
   provisioned as env vars — never in code, never in the repo.  The token is
   obtained via ``POST /identity/connect/token`` with
   ``grant_type=client_credentials``.
+* Ciphers are enumerated via ``GET /api/sync`` (there is no ``/api/items``
+  route).  The sync payload's fields are encrypted "EncString" blobs, so the
+  vault is **unlocked** with the account master password (see :mod:`bwcrypto`)
+  and the ``name`` / ``login`` fields are decrypted to plaintext before use.
+  The access token from ``client_credentials`` alone cannot decrypt them.
 * Access is **scoped to a single collection**.  An entry that is not a member of
   the provisioned collection is rejected with :class:`EntryOutOfScopeError`
   before any credential is extracted.
@@ -27,6 +32,8 @@ from typing import Any
 
 import httpx
 
+from robotsix_browser import bwcrypto
+from robotsix_browser.bwcrypto import Keyring, VaultCryptoError
 from robotsix_browser.config import Settings
 
 #: Placeholder rendered wherever a password would otherwise be shown.
@@ -123,6 +130,35 @@ def _extract_credential(item: dict[str, Any], collection_id: str) -> VaultCreden
     return VaultCredential(username=username, password=password)
 
 
+def _cipher_name(cipher: dict[str, Any], keyring: Keyring) -> str:
+    """Decrypt a cipher's ``name`` to plaintext (never a secret value)."""
+    try:
+        return keyring.decrypt(cipher.get("name"), cipher.get("organizationId"))
+    except VaultCryptoError as exc:
+        raise VaultError("failed to decrypt vault entry name") from exc
+
+
+def _decrypt_cipher(cipher: dict[str, Any], keyring: Keyring) -> dict[str, Any]:
+    """Decrypt a sync-payload cipher into a plaintext item dict.
+
+    Returns the minimal shape :func:`_extract_credential` expects — the id, the
+    collection membership (used for scope validation) and the decrypted
+    ``login`` username/password.  No other fields are decrypted or retained.
+    """
+    login = cipher.get("login") or {}
+    org_id = cipher.get("organizationId")
+    try:
+        username = keyring.decrypt(login.get("username"), org_id)
+        password = keyring.decrypt(login.get("password"), org_id)
+    except VaultCryptoError as exc:
+        raise VaultError("failed to decrypt vault entry login") from exc
+    return {
+        "id": cipher.get("id"),
+        "collectionIds": cipher.get("collectionIds") or [],
+        "login": {"username": username, "password": password},
+    }
+
+
 class VaultClient:
     """Retrieves scoped credentials via the Bitwarden JSON API."""
 
@@ -133,6 +169,8 @@ class VaultClient:
         client_id: str,
         client_secret: str,
         collection_id: str,
+        email: str = "",
+        master_password: str = "",
         device_type: int = 0,
         device_identifier: str = "robotsix-browser",
         device_name: str = "robotsix-browser",
@@ -142,6 +180,8 @@ class VaultClient:
         self._client_id = client_id
         self._client_secret = client_secret
         self._collection_id = collection_id
+        self._email = email
+        self._master_password = master_password
         self._device_type = device_type
         self._device_identifier = device_identifier
         self._device_name = device_name
@@ -155,6 +195,8 @@ class VaultClient:
             client_id=settings.bw_client_id.get_secret_value(),
             client_secret=settings.bw_client_secret.get_secret_value(),
             collection_id=settings.bw_collection_id,
+            email=settings.bw_email,
+            master_password=settings.bw_master_password.get_secret_value(),
             device_type=settings.bw_device_type,
             device_identifier=settings.bw_device_identifier,
             device_name=settings.bw_device_name,
@@ -162,89 +204,150 @@ class VaultClient:
 
     @property
     def is_configured(self) -> bool:
-        """True only when every required secret / scope value is present."""
+        """True only when every required secret / scope value is present.
+
+        Unlock/decrypt needs the account ``email`` (KDF salt) and
+        ``master_password`` in addition to the API-key credentials, so both are
+        required here — otherwise cipher fields could never be decrypted.
+        """
         return all(
             (
                 self._server_url,
                 self._client_id,
                 self._client_secret,
                 self._collection_id,
+                self._email,
+                self._master_password,
             )
         )
 
     async def get_credential(self, entry: str) -> VaultCredential:
         """Return the scoped :class:`VaultCredential` for ``entry``.
 
-        ``entry`` may be a vault entry name or id.  The returned credential is
+        ``entry`` may be a vault entry name or id.  Ciphers are enumerated via
+        ``GET /api/sync``, the vault is unlocked with the master password, and
+        the matched entry's login is decrypted.  The returned credential is
         guaranteed to belong to the provisioned collection.
         """
-        if not self.is_configured:
-            raise VaultNotConfiguredError(
-                "Vaultwarden credential injection is not configured"
-            )
-        token = await self._get_token()
-        item = await self._get_item(entry, token)
+        self._require_configured()
+        sync, keyring = await self._load_vault()
+        cipher = self._find_cipher(sync, entry, keyring)
+        item = _decrypt_cipher(cipher, keyring)
         return _extract_credential(item, self._collection_id)
 
     async def list_collections(self) -> list[dict[str, str]]:
-        """List read-only metadata (``id``, ``name``) of collections the scoped
-        API key can see.
+        """List read-only metadata (``id``, decrypted ``name``) of collections
+        the scoped API key can see.
 
-        Only non-secret fields are returned; the raw upstream payload is
-        discarded so no secret can leak into the response.
+        Collection names are decrypted to plaintext; no secret value is ever
+        included in the result.
         """
-        if not self.is_configured:
-            raise VaultNotConfiguredError(
-                "Vaultwarden credential injection is not configured"
-            )
-        token = await self._get_token()
-        collections = await self._list_metadata(
-            "/api/collections", token, "collection list"
-        )
-        return [
-            {"id": item["id"], "name": item.get("name", "")}
-            for item in collections
-            if item.get("id")
-        ]
+        self._require_configured()
+        sync, keyring = await self._load_vault()
+        result: list[dict[str, str]] = []
+        for coll in sync.get("collections", []):
+            if not coll.get("id"):
+                continue
+            try:
+                name = keyring.decrypt(coll.get("name"), coll.get("organizationId"))
+            except VaultCryptoError as exc:
+                raise VaultError("failed to decrypt collection name") from exc
+            result.append({"id": coll["id"], "name": name})
+        return result
 
     async def list_items(self) -> list[dict[str, str]]:
-        """List read-only metadata (``id``, ``name``) of items the scoped API
-        key can see.
+        """List read-only metadata (``id``, decrypted ``name``) of items in the
+        provisioned collection.
 
-        Only ``id`` and ``name`` are extracted; passwords, secure-note
-        contents, and custom field values are never touched or returned.
+        Only ``id`` and the decrypted ``name`` are returned; passwords,
+        secure-note contents, and custom field values are never touched or
+        returned.
         """
+        self._require_configured()
+        sync, keyring = await self._load_vault()
+        return [
+            {"id": cipher["id"], "name": _cipher_name(cipher, keyring)}
+            for cipher in sync.get("ciphers", [])
+            if cipher.get("id") and self._in_scope(cipher)
+        ]
+
+    def _require_configured(self) -> None:
         if not self.is_configured:
             raise VaultNotConfiguredError(
                 "Vaultwarden credential injection is not configured"
             )
+
+    def _in_scope(self, cipher: dict[str, Any]) -> bool:
+        """True when the cipher is a member of the provisioned collection."""
+        return self._collection_id in (cipher.get("collectionIds") or [])
+
+    def _find_cipher(
+        self, sync: dict[str, Any], entry: str, keyring: Keyring
+    ) -> dict[str, Any]:
+        """Locate a cipher by id, falling back to a decrypted-name match."""
+        ciphers: list[dict[str, Any]] = sync.get("ciphers", [])
+        for cipher in ciphers:
+            if cipher.get("id") == entry:
+                return cipher
+        for cipher in ciphers:
+            if _cipher_name(cipher, keyring) == entry:
+                return cipher
+        raise EntryNotFoundError("vault entry was not found")
+
+    async def _load_vault(self) -> tuple[dict[str, Any], Keyring]:
+        """Authenticate, fetch the sync payload and unlock the vault."""
         token = await self._get_token()
-        items = await self._list_metadata("/api/items", token, "item list")
-        return [
-            {"id": item["id"], "name": item.get("name", "")}
-            for item in items
-            if item.get("id")
-        ]
+        kdf = await self._get_prelogin()
+        sync = await self._get_sync(token)
+        profile = sync.get("profile") or {}
+        try:
+            keyring = bwcrypto.unlock(
+                master_password=self._master_password,
+                email=self._email,
+                kdf=int(kdf.get("kdf", bwcrypto.KDF_PBKDF2)),
+                iterations=int(kdf.get("kdfIterations", 0)),
+                memory=kdf.get("kdfMemory"),
+                parallelism=kdf.get("kdfParallelism"),
+                protected_key=profile.get("key", ""),
+                protected_private_key=profile.get("privateKey"),
+                organizations=profile.get("organizations") or (),
+            )
+        except VaultCryptoError as exc:
+            raise VaultError("failed to unlock vault") from exc
+        return sync, keyring
 
-    async def _list_metadata(
-        self, path: str, token: str, operation: str
-    ) -> list[dict[str, Any]]:
-        """Fetch a Bitwarden ``data`` list endpoint for read-only diagnostics.
+    async def _get_prelogin(self) -> dict[str, Any]:
+        """Fetch the account KDF parameters (unauthenticated)."""
+        async with httpx.AsyncClient(transport=self._transport) as client:
+            resp = await client.post(
+                f"{self._server_url}/identity/accounts/prelogin",
+                json={"email": self._email},
+            )
+        if resp.status_code != 200:
+            raise VaultUpstreamError(
+                resp.status_code,
+                _sanitize_upstream_error_body(resp, (self._client_secret,)),
+                "prelogin",
+            )
+        data: dict[str, Any] = resp.json()
+        return data
 
-        On a non-success response raises :class:`VaultUpstreamError` carrying a
-        sanitized status/reason so callers can surface a safe, diagnosable
-        error instead of a generic 502.
-        """
+    async def _get_sync(self, token: str) -> dict[str, Any]:
+        """Fetch the full sync payload (profile + ciphers + collections)."""
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(transport=self._transport) as client:
-            resp = await client.get(f"{self._server_url}{path}", headers=headers)
+            resp = await client.get(
+                f"{self._server_url}/api/sync",
+                params={"excludeDomains": "true"},
+                headers=headers,
+            )
         if resp.status_code != 200:
             raise VaultUpstreamError(
                 resp.status_code,
                 _sanitize_upstream_error_body(resp, (self._client_secret, token)),
-                operation,
+                "vault sync",
             )
-        data: list[dict[str, Any]] = resp.json().get("data", [])
+        data: dict[str, Any] = resp.json()
         return data
 
     async def _get_token(self) -> str:
@@ -270,39 +373,3 @@ class VaultClient:
                 )
             token: str = resp.json()["access_token"]
             return token
-
-    async def _get_item(self, entry: str, token: str) -> dict[str, Any]:
-        """Fetch a vault item by id, falling back to name search."""
-        headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(transport=self._transport) as client:
-            # Try fetching by id first.
-            resp = await client.get(
-                f"{self._server_url}/api/items/{entry}",
-                headers=headers,
-            )
-            if resp.status_code == 200:
-                result: dict[str, Any] = resp.json()
-                return result
-            if resp.status_code != 404:
-                raise VaultUpstreamError(
-                    resp.status_code,
-                    _sanitize_upstream_error_body(resp, (self._client_secret, token)),
-                    "item lookup",
-                )
-            # Fall back to listing and searching by name.
-            resp = await client.get(
-                f"{self._server_url}/api/items",
-                headers=headers,
-            )
-            if resp.status_code != 200:
-                raise VaultUpstreamError(
-                    resp.status_code,
-                    _sanitize_upstream_error_body(resp, (self._client_secret, token)),
-                    "item list",
-                )
-            items = resp.json().get("data", [])
-            for item in items:
-                if item.get("name") == entry:
-                    found: dict[str, Any] = item
-                    return found
-            raise EntryNotFoundError("vault entry was not found")

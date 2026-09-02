@@ -48,7 +48,11 @@ def test_chat_skill_document(client: TestClient) -> None:
     assert doc["base"]["port"] == 8000
     # Every state-mutating action is confirmation-gated; reads are not.
     assert "submit" in doc["safety"]["confirmation_gated"]
-    assert set(doc["safety"]["read_only"]) == {"state", "value"}
+    read_only = set(doc["safety"]["read_only"])
+    assert {"state", "value"} <= read_only
+    # The read-only vault diagnostics are advertised and expose no secrets.
+    assert "vault_diagnostics.items" in read_only
+    assert doc["vault_diagnostics"]["items"]["path"] == "/vault/items"
     # The programmatic auth path is documented for the chat agent.
     assert doc["auth"]["internal"]["network"] == "central-deploy-proxy"
     bypass = doc["auth"]["public_edge"]["programmatic_bypass"]

@@ -60,6 +60,8 @@ truth.  Secrets use pydantic `SecretStr` and are masked in repr / logs.
 | `bw_server_url`       | `""`                 | `string`    | Vaultwarden server URL (Bitwarden API).   |
 | `bw_client_id`        | `""`                 | `SecretStr` | API-key `client_id` (`user.<uuid>`).      |
 | `bw_client_secret`    | `""`                 | `SecretStr` | API-key `client_secret` (masked).         |
+| `bw_email`            | `""`                 | `string`    | Service-account email (vault-unlock KDF salt). |
+| `bw_master_password`  | `""`                 | `SecretStr` | Service-account master password used to unlock/decrypt the vault (masked). |
 | `bw_collection_id`    | `""`                 | `string`    | The single collection the service reads.  |
 
 Example `config.json`:
@@ -70,6 +72,8 @@ Example `config.json`:
   "bw_server_url": "https://vault.example",
   "bw_client_id": "user.XXXX",
   "bw_client_secret": "secret",
+  "bw_email": "svc@example.com",
+  "bw_master_password": "master-password",
   "bw_collection_id": "col-XXXX"
 }
 ```
@@ -169,10 +173,21 @@ Security model:
   `POST /identity/connect/token` with `grant_type=client_credentials`
   (`client_id` = `user.<uuid>`, `client_secret`). Both values come from the
   JSON config file (see [Configuration](#configuration)) — never in code,
-  never in the repo.  No master password or unlock step is required.
+  never in the repo.
+- **Sync + unlock/decrypt.** Ciphers are enumerated via `GET /api/sync` (there
+  is no `/api/items` route on Vaultwarden). The sync payload's fields are
+  encrypted "EncString" blobs, so the vault is **unlocked** with the account
+  master password: the master-key-derived symmetric key decrypts the user key,
+  which decrypts the RSA private key, which decrypts the organization key that
+  finally decrypts the entry's `name`/`username`/`password`. This needs
+  `bw_email` (KDF salt) and `bw_master_password` in the config — the
+  `client_credentials` access token alone cannot decrypt vault data. Decryption
+  happens server-side; plaintext secrets are never logged or returned.
 - **Dedicated service account + single collection.** The service is scoped to
   one provisioned collection. A request for an entry outside that collection
-  fails cleanly with `403`; a missing entry returns `404`.
+  fails cleanly with `403`; a missing entry returns `404`. The read-only
+  `GET /vault/collections` and `GET /vault/items` diagnostics return only
+  decrypted **ids and names** — never secret values.
 - **Zero leakage.** At fill-time the entry is fetched and the
   `username`/`password` are typed **directly into the browser fields**. The
   secret value is never returned in a response body, never logged, and never
