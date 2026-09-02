@@ -21,6 +21,7 @@ HUMAN SUBMIT-GATE: no endpoint other than ``/submit`` submits a form, and
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -53,7 +54,10 @@ from robotsix_browser.vault import (
     VaultClient,
     VaultError,
     VaultNotConfiguredError,
+    VaultUpstreamError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_manager(request: Request) -> SessionManager:
@@ -234,6 +238,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except EntryNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except VaultUpstreamError as exc:
+            logger.warning(
+                "vault credential retrieval failed (upstream HTTP %s): %s",
+                exc.status_code,
+                exc.reason,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "credential retrieval failed (upstream HTTP "
+                    f"{exc.status_code}): {exc.reason}"
+                ),
+            ) from exc
         except VaultError as exc:
             raise HTTPException(
                 status_code=502, detail="credential retrieval failed"

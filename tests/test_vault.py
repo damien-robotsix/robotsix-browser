@@ -16,6 +16,7 @@ from robotsix_browser.vault import (
     VaultCredential,
     VaultError,
     VaultNotConfiguredError,
+    VaultUpstreamError,
     _extract_credential,
 )
 
@@ -181,7 +182,7 @@ def test_get_credential_not_found() -> None:
 
 
 def test_get_credential_token_failure() -> None:
-    """Token endpoint returning non-200 raises VaultError."""
+    """Token endpoint returning non-200 raises VaultUpstreamError with a safe reason."""
 
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, text="unauthorized")
@@ -196,8 +197,37 @@ def test_get_credential_token_failure() -> None:
         )
         await client.get_credential("entry-1")
 
-    with pytest.raises(VaultError, match="token request failed"):
+    with pytest.raises(VaultUpstreamError, match="token request failed") as exc:
         asyncio.run(_run())
+    assert exc.value.status_code == 401
+    assert exc.value.reason == "unauthorized"
+
+
+def test_get_credential_item_failure_redacts_secrets() -> None:
+    """A failing item fetch surfaces a sanitized upstream reason (no secrets)."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "/identity/connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-123"})
+        return httpx.Response(503, text="Service Unavailable tok-123 shh")
+
+    async def _run() -> None:
+        client = VaultClient(
+            server_url="https://vault.example",
+            client_id="user.abc",
+            client_secret="shh",
+            collection_id=_COLLECTION,
+            transport=httpx.MockTransport(_handler),
+        )
+        await client.get_credential("entry-1")
+
+    with pytest.raises(VaultUpstreamError, match="item lookup failed") as exc:
+        asyncio.run(_run())
+    assert exc.value.status_code == 503
+    assert "Service Unavailable" in exc.value.reason
+    # The client secret and bearer token must never leak into the exception.
+    assert "shh" not in str(exc.value)
+    assert "tok-123" not in str(exc.value)
 
 
 def test_token_request_includes_device_params() -> None:
