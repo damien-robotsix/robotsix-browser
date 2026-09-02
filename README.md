@@ -113,6 +113,8 @@ browser context (its own cookies / storage).
 | `GET /sessions/{id}/value`        | Read back a field's current value.                 |
 | `POST /sessions/{id}/fill-credentials` | Inject a **scoped Vaultwarden entry** (never echoed). |
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
+| `GET /vault/collections`           | Read-only: collection ids/names the vault key can see. |
+| `GET /vault/items`                 | Read-only: item ids/names the vault key can see (no secrets). |
 
 The machine-readable skill document (endpoints, request/response shapes, and
 the confirmation-gated safety contract) is served at `GET /chat-skill` for a

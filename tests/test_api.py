@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from robotsix_browser.app import get_manager, get_vault
-from robotsix_browser.vault import VaultUpstreamError
+from robotsix_browser.vault import VaultNotConfiguredError, VaultUpstreamError
 
 _FORM_HTML = (
     "<form><input id='name'>"
@@ -195,3 +195,70 @@ def test_fill_credentials_upstream_failure_surfaces_safe_reason(
         and "Bad Gateway" in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_vault_collections_lists_only_metadata(client: TestClient) -> None:
+    response = client.get("/vault/collections")
+    assert response.status_code == 200
+    body = response.json()
+    assert "collections" in body
+    assert any(
+        c == {"id": "col-123", "name": "test-collection"} for c in body["collections"]
+    )
+
+
+def test_vault_items_lists_metadata_without_secrets(
+    client: TestClient, fake_secret: str
+) -> None:
+    response = client.get("/vault/items")
+    assert response.status_code == 200
+    body = response.json()
+    assert "items" in body
+    names = {item["name"] for item in body["items"]}
+    assert "ovh-portal" in names
+    assert all(set(item) == {"id", "name"} for item in body["items"])
+    # The password / secret must never appear in the response body.
+    assert fake_secret not in response.text
+
+
+def test_vault_collections_upstream_failure_surfaces_safe_reason(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An upstream collection-list failure yields a 502 + safe status/reason."""
+
+    class _FailingVault:
+        async def list_collections(self) -> None:
+            raise VaultUpstreamError(
+                401, "unauthorized: bad credentials", "collection list"
+            )
+
+    client.app.dependency_overrides[get_vault] = _FailingVault
+
+    with caplog.at_level(logging.WARNING):
+        response = client.get("/vault/collections")
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "upstream HTTP 401" in detail
+    assert "unauthorized: bad credentials" in detail
+    assert any(
+        "upstream HTTP 401" in record.getMessage()
+        and "bad credentials" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_vault_items_not_configured_returns_503(client: TestClient) -> None:
+    """An unconfigured vault returns 503 rather than a generic 502."""
+
+    class _UnconfiguredVault:
+        async def list_items(self) -> None:
+            raise VaultNotConfiguredError(
+                "Vaultwarden credential injection is not configured"
+            )
+
+    client.app.dependency_overrides[get_vault] = _UnconfiguredVault
+
+    response = client.get("/vault/items")
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]

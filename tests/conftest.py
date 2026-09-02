@@ -59,6 +59,16 @@ class FakeVault:
                 f"entry {entry!r} is not in the provisioned collection"
             ) from None
 
+    async def list_collections(self) -> list[dict[str, str]]:
+        """Read-only metadata for the single provisioned collection."""
+        return [{"id": "col-123", "name": "test-collection"}]
+
+    async def list_items(self) -> list[dict[str, str]]:
+        """Read-only metadata (id/name) for the in-scope entries."""
+        return [
+            {"id": f"item-{i}", "name": name} for i, name in enumerate(self._entries)
+        ]
+
 
 @pytest.fixture
 def fake_secret() -> str:

@@ -14,6 +14,8 @@ Endpoint map (all session-scoped, each session is an isolated browser context):
 * ``GET    /sessions/{id}/value``      read back a field's current value
 * ``POST   /sessions/{id}/fill-credentials``  inject a scoped Vaultwarden entry
 * ``POST   /sessions/{id}/submit``     HUMAN-GATED final submit / confirm
+* ``GET    /vault/collections``        read-only collection metadata (id/name)
+* ``GET    /vault/items``              read-only item metadata (id/name)
 
 HUMAN SUBMIT-GATE: no endpoint other than ``/submit`` submits a form, and
 ``/submit`` exists solely so an operator can gate the consequential action.
@@ -44,6 +46,10 @@ from robotsix_browser.models import (
     TypeRequest,
     UploadRequest,
     ValueResponse,
+    VaultCollectionInfo,
+    VaultCollectionsResponse,
+    VaultItemInfo,
+    VaultItemsResponse,
     WaitRequest,
 )
 from robotsix_browser.operations import UnsupportedUrlError
@@ -111,6 +117,79 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/chat-skill")
     async def chat_skill_doc() -> dict[str, Any]:
         return chat_skill.chat_skill()
+
+    @app.get("/vault/collections", response_model=VaultCollectionsResponse)
+    async def vault_collections(
+        vault: VaultClient = Depends(get_vault),
+    ) -> VaultCollectionsResponse:
+        """Read-only: list collection ids/names visible to the scoped API key.
+
+        Only non-secret metadata (``id``, ``name``) is returned; the response
+        schema carries no secret fields.  Upstream auth/fetch failures surface
+        a safe status/reason rather than a generic 502.
+        """
+        try:
+            collections = await vault.list_collections()
+        except VaultNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except VaultUpstreamError as exc:
+            logger.warning(
+                "vault collection list failed (upstream HTTP %s): %s",
+                exc.status_code,
+                exc.reason,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "vault collection list failed (upstream HTTP "
+                    f"{exc.status_code}): {exc.reason}"
+                ),
+            ) from exc
+        except VaultError as exc:
+            raise HTTPException(
+                status_code=502, detail="vault collection list failed"
+            ) from exc
+        return VaultCollectionsResponse(
+            collections=[
+                VaultCollectionInfo(id=c["id"], name=c["name"]) for c in collections
+            ]
+        )
+
+    @app.get("/vault/items", response_model=VaultItemsResponse)
+    async def vault_items(
+        vault: VaultClient = Depends(get_vault),
+    ) -> VaultItemsResponse:
+        """Read-only: list item ids/names visible to the scoped API key.
+
+        Only non-secret metadata (``id``, ``name``) is returned; passwords,
+        secure-note contents, and custom secret fields are never included.
+        Upstream auth/fetch failures surface a safe status/reason rather than
+        a generic 502.
+        """
+        try:
+            items = await vault.list_items()
+        except VaultNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except VaultUpstreamError as exc:
+            logger.warning(
+                "vault item list failed (upstream HTTP %s): %s",
+                exc.status_code,
+                exc.reason,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "vault item list failed (upstream HTTP "
+                    f"{exc.status_code}): {exc.reason}"
+                ),
+            ) from exc
+        except VaultError as exc:
+            raise HTTPException(
+                status_code=502, detail="vault item list failed"
+            ) from exc
+        return VaultItemsResponse(
+            items=[VaultItemInfo(id=i["id"], name=i["name"]) for i in items]
+        )
 
     @app.post("/sessions", response_model=SessionResponse)
     async def open_session(
