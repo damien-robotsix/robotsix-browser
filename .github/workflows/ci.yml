@@ -102,9 +102,28 @@ jobs:
             .
 
       - name: Push image
+        shell: bash
         run: |
-          docker push ghcr.io/damien-robotsix/robotsix-browser:main
-          docker push "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}"
+          # GHCR intermittently fails a docker push mid-stream with "unknown
+          # blob" (a registry-side blob-upload race). The image is already
+          # built and tagged, so a bounded retry is cheap: blobs uploaded by
+          # the failed attempt are reused ("Layer already exists").
+          retry_push() {
+            local tag="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if docker push "$tag"; then
+                echo "Pushed ${tag}"
+                return 0
+              fi
+              echo "docker push ${tag} failed (attempt ${attempt}/5); retrying in 10s..."
+              sleep 10
+            done
+            echo "docker push ${tag} failed after 5 attempts" >&2
+            return 1
+          }
+          retry_push ghcr.io/damien-robotsix/robotsix-browser:main
+          retry_push "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}"
 
   # Shared security gate: SAST + dependency CVE audit + secret scan + SBOM.
   # (fleet-wide reusable workflow — the SAST realization of the baseline's
