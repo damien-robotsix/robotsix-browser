@@ -127,7 +127,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sessions.
     """
     settings: Settings = app.state.settings
-    app.state.session_manager = SessionManager(headless=settings.headless)
+    app.state.session_manager = SessionManager(
+        headless=settings.headless, default_timeout_ms=settings.default_timeout_ms
+    )
     app.state.filehub_client = FileHubClient(settings.file_hub_base_url)
     app.state.vault_client = VaultClient.from_settings(settings)
     try:
