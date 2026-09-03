@@ -161,6 +161,67 @@ def test_fill_credentials_out_of_scope_fails_cleanly(
     assert fake_secret not in response.text
 
 
+_NO_LOGIN_HTML = "<div id='wall'>Please verify you are human before continuing.</div>"
+
+_CONSENT_WALL_HTML = (
+    "<button onclick=\"document.getElementById('login').style.display='block'\">"
+    "Accept &amp; continue</button>"
+    "<form id='login' style='display:none'>"
+    "<input id='user'><input id='pass' type='password'></form>"
+)
+
+
+def test_fill_credentials_missing_field_returns_clean_4xx(
+    browser_available: None, fast_fill_client: TestClient, fake_secret: str
+) -> None:
+    """A page without the login field yields a clean 422 — not a 500."""
+    session_id = fast_fill_client.post("/sessions", json={}).json()["session_id"]
+    fast_fill_client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(_NO_LOGIN_HTML)}
+    )
+
+    response = fast_fill_client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "ovh-portal",
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "#user" in detail
+    assert "not found" in detail
+    # The clean-failure path must never surface the secret.
+    assert fake_secret not in response.text
+
+
+def test_fill_credentials_dismisses_consent_wall_then_fills(
+    browser_available: None, fast_fill_client: TestClient, fake_secret: str
+) -> None:
+    """A consent interstitial is dismissed, revealing the form, which is filled."""
+    session_id = fast_fill_client.post("/sessions", json={}).json()["session_id"]
+    fast_fill_client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(_CONSENT_WALL_HTML)}
+    )
+
+    response = fast_fill_client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "ovh-portal",
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 200
+    assert fake_secret not in response.text
+
+    user = fast_fill_client.get(
+        f"/sessions/{session_id}/value", params={"selector": "#user"}
+    )
+    assert user.json()["value"] == "svc-ovh"
+
+
 def test_fill_credentials_upstream_failure_surfaces_safe_reason(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:

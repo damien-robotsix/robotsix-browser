@@ -16,6 +16,11 @@
       "title": "Default Timeout Ms",
       "type": "integer"
     },
+    "credential_fill_timeout_ms": {
+      "default": 5000,
+      "title": "Credential Fill Timeout Ms",
+      "type": "integer"
+    },
     "bw_server_url": {
       "default": "",
       "title": "Bw Server Url",

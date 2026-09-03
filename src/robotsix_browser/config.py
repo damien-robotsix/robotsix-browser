@@ -21,6 +21,11 @@ class Settings(BaseModel):
     headless: bool = True
     #: Default action timeout in milliseconds for page interactions.
     default_timeout_ms: int = 30_000
+    #: Bounded timeout (ms) for locating a login field during credential
+    #: fill.  Kept well below ``default_timeout_ms`` so a missing / variant
+    #: login form fails fast with a clean 4xx instead of blocking on the 30s
+    #: default and surfacing as a 500.
+    credential_fill_timeout_ms: int = 5_000
 
     # --- Vaultwarden / Bitwarden CLI credential injection -----------------
     # All of the following are read from the single JSON config file.  Secrets

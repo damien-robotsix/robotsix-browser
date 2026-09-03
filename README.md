@@ -57,6 +57,7 @@ truth.  Secrets use pydantic `SecretStr` and are masked in repr / logs.
 | `file_hub_base_url`   | `http://localhost:8080` | `string` | Base URL of robotsix-file-hub (uploads).  |
 | `headless`            | `true`               | `boolean`   | Launch Chromium headless.                 |
 | `default_timeout_ms`  | `30000`              | `integer`   | Default action timeout.                   |
+| `credential_fill_timeout_ms` | `5000`         | `integer`   | Bounded timeout (ms) for locating a login field during credential fill. |
 | `bw_server_url`       | `""`                 | `string`    | Vaultwarden server URL (Bitwarden API).   |
 | `bw_client_id`        | `""`                 | `SecretStr` | API-key `client_id` (`user.<uuid>`).      |
 | `bw_client_secret`    | `""`                 | `SecretStr` | API-key `client_secret` (masked).         |
