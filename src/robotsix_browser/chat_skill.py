@@ -15,7 +15,16 @@ consequential action.  ``GET /state`` is the read-only eye (accessibility tree
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
+
+from robotsix_browser.models import LoadState, WaitUntil
+
+#: Enum members advertised in the skill, derived from the ``Literal`` types in
+#: :mod:`robotsix_browser.models` (same drift-guard spirit as the CI "Config
+#: schema sync" step): adding or renaming a member cannot leave this document
+#: stale.
+WAIT_UNTIL_VALUES = " | ".join(get_args(WaitUntil))
+LOAD_STATE_VALUES = " | ".join(get_args(LoadState))
 
 
 def chat_skill() -> dict[str, Any]:
@@ -85,9 +94,7 @@ def chat_skill() -> dict[str, Any]:
                 "path": "/sessions/{id}/navigate",
                 "request": {
                     "url": "str (http/https/data/about)",
-                    "wait_until": (
-                        "load | domcontentloaded | networkidle | commit (default load)"
-                    ),
+                    "wait_until": f"{WAIT_UNTIL_VALUES} (default load)",
                 },
                 "response": {"status": "ok", "url": "str"},
             },
@@ -146,7 +153,7 @@ def chat_skill() -> dict[str, Any]:
                 "path": "/sessions/{id}/wait",
                 "request": {
                     "selector": "str | None (CSS)",
-                    "state": "load | domcontentloaded | networkidle | None",
+                    "state": f"{LOAD_STATE_VALUES} | None",
                     "timeout_ms": "int | None",
                 },
                 "response": {"status": "ok", "url": "str"},

@@ -1,23 +1,49 @@
-"""Structural unit tests for the chat-agent skill document.
+"""Drift guard for the chat-skill document (mirrors the CI "Config schema
+sync" step).
 
-``chat_skill()`` is a pure function; these tests pin its invariants so the
-hand-maintained document cannot drift from the real API surface without a test
-failure.
+``chat_skill()`` hand-duplicates the HTTP API surface defined by the FastAPI
+routes in :mod:`robotsix_browser.app` and the ``Literal`` enum types in
+:mod:`robotsix_browser.models`; it is a pure function.  These tests pin its
+invariants so the hand-maintained document cannot drift from the real API
+surface without a test failure:
+
+* every structured ``(method, path)`` pair advertised in the skill matches
+  ``app.routes`` and vice versa,
+* the ``wait_until`` / ``state`` enum-value strings match
+  ``get_args(WaitUntil)`` / ``get_args(LoadState)``,
+* every endpoint entry documents a valid method/path, and
+* every action is classified in the safety lists.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, get_args
+
+from fastapi.routing import APIRoute
 
 from robotsix_browser.app import create_app
 from robotsix_browser.chat_skill import chat_skill
 from robotsix_browser.config import Settings
+from robotsix_browser.models import LoadState, WaitUntil
 
 _METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 #: Session lifecycle entries mutate the session registry, never the page, so
 #: they are exempt from the confirmation-gated / read-only classification.
 _LIFECYCLE = {"sessions.open", "sessions.close"}
+
+_PATH_PARAM = re.compile(r"\{[^}]+\}")
+
+#: Routes without a structured (method, path) entry in the skill: ``/health``
+#: and ``/chat-skill`` are documented in prose (the ``base.health`` string,
+#: the ``endpoint`` key).  The framework OpenAPI/docs routes are plain
+#: Starlette ``Route`` objects rather than ``APIRoute``, so ``_app_endpoints``
+#: already skips them.
+_NON_ADVERTISED_ROUTES = {
+    ("GET", "/health"),
+    ("GET", "/chat-skill"),
+}
 
 
 def _endpoint_entries(node: Any, name: str = "") -> list[tuple[str, dict[str, Any]]]:
@@ -30,6 +56,38 @@ def _endpoint_entries(node: Any, name: str = "") -> list[tuple[str, dict[str, An
             prefix = f"{name}.{child_name}" if name else str(child_name)
             entries.extend(_endpoint_entries(child, prefix))
     return entries
+
+
+def _normalize_path(path: str) -> str:
+    """Collapse route-param names so ``{id}`` and ``{session_id}`` compare equal."""
+    return _PATH_PARAM.sub("{param}", path)
+
+
+def _skill_endpoints() -> set[tuple[str, str]]:
+    """The structured (method, path) pairs advertised in the skill doc."""
+
+    def collect(node: Any) -> set[tuple[str, str]]:
+        if not isinstance(node, dict):
+            return set()
+        endpoints: set[tuple[str, str]] = set()
+        if "method" in node and "path" in node:
+            endpoints.add((node["method"], node["path"]))
+        for value in node.values():
+            endpoints |= collect(value)
+        return endpoints
+
+    return collect(chat_skill())
+
+
+def _app_endpoints() -> set[tuple[str, str]]:
+    """The (method, path) pairs the FastAPI app actually routes."""
+    app = create_app(Settings(headless=True))
+    endpoints: set[tuple[str, str]] = set()
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            for method in route.methods - {"HEAD"}:
+                endpoints.add((method, _normalize_path(route.path)))
+    return endpoints
 
 
 def test_every_endpoint_documents_method_and_path() -> None:
@@ -79,8 +137,6 @@ def test_mutating_actions_are_confirmation_gated_and_reads_are_not() -> None:
 
 
 def test_documented_endpoints_match_app_routes() -> None:
-    from fastapi.routing import APIRoute
-
     # FastAPI mounts its own documentation routes (/openapi.json, /docs,
     # /docs/oauth2-redirect, /redoc) alongside the app's endpoints.  They are
     # framework-internal and never part of the skill document, so exclude them
@@ -114,3 +170,30 @@ def test_documented_endpoints_match_app_routes() -> None:
         app_routes.add((methods.pop(), route.path))
 
     assert documented == app_routes
+
+
+def test_chat_skill_advertises_exactly_the_app_routes() -> None:
+    advertised = {
+        (method, _normalize_path(path)) for method, path in _skill_endpoints()
+    }
+    routed = _app_endpoints()
+
+    # Sanity: the prose-documented routes we exclude really are routed, so
+    # the exclusion list cannot silently grow stale.
+    assert routed >= _NON_ADVERTISED_ROUTES
+
+    assert advertised == routed - _NON_ADVERTISED_ROUTES
+
+
+def test_enum_value_strings_match_models() -> None:
+    """The advertised ``wait_until`` / ``state`` values equal the ``Literal``s."""
+    doc = chat_skill()
+
+    expected_wait_until = " | ".join(get_args(WaitUntil))
+    expected_state = " | ".join(get_args(LoadState))
+
+    assert (
+        doc["actions"]["navigate"]["request"]["wait_until"]
+        == f"{expected_wait_until} (default load)"
+    )
+    assert doc["actions"]["wait"]["request"]["state"] == f"{expected_state} | None"
