@@ -69,8 +69,8 @@ class SessionManager:
                 # Wire the configured "Default action timeout" into Playwright's
                 # page-level defaults so click / fill / select / wait operations
                 # and navigations pick it up unless a request overrides it.
-                await page.set_default_timeout(self._default_timeout_ms)
-                await page.set_default_navigation_timeout(self._default_timeout_ms)
+                page.set_default_timeout(self._default_timeout_ms)
+                page.set_default_navigation_timeout(self._default_timeout_ms)
             session = Session(id=new_id, context=context, page=page)
             self._sessions[new_id] = session
             return session

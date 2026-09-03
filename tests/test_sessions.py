@@ -20,8 +20,8 @@ from robotsix_browser.sessions import Session, SessionManager, SessionNotFoundEr
 def fakes() -> dict[str, Mock]:
     """Fake Playwright/Chromium objects backing a :class:`SessionManager`."""
     page = Mock(name="page")
-    page.set_default_timeout = AsyncMock()
-    page.set_default_navigation_timeout = AsyncMock()
+    page.set_default_timeout = Mock()
+    page.set_default_navigation_timeout = Mock()
     context = Mock(name="context")
     context.new_page = AsyncMock(return_value=page)
     context.close = AsyncMock()
@@ -79,8 +79,8 @@ async def test_open_session_applies_configured_default_timeouts(
     with patch("robotsix_browser.sessions.async_playwright", fakes["async_playwright"]):
         await m.open_session()
 
-    fakes["page"].set_default_timeout.assert_awaited_once_with(5000)
-    fakes["page"].set_default_navigation_timeout.assert_awaited_once_with(5000)
+    fakes["page"].set_default_timeout.assert_called_once_with(5000)
+    fakes["page"].set_default_navigation_timeout.assert_called_once_with(5000)
 
 
 async def test_without_default_timeout_leaves_playwright_defaults(
@@ -89,8 +89,8 @@ async def test_without_default_timeout_leaves_playwright_defaults(
     m, fakes = manager
     await m.open_session()
 
-    fakes["page"].set_default_timeout.assert_not_awaited()
-    fakes["page"].set_default_navigation_timeout.assert_not_awaited()
+    fakes["page"].set_default_timeout.assert_not_called()
+    fakes["page"].set_default_navigation_timeout.assert_not_called()
 
 
 async def test_open_session_reopens_existing(
