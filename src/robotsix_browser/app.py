@@ -92,6 +92,13 @@ def _lookup(manager: SessionManager, session_id: str) -> Session:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan hook managing per-app resources.
+
+    On startup it builds the ``SessionManager``, ``FileHubClient``, and
+    ``VaultClient.from_settings`` and stores them on ``app.state``. On
+    shutdown it stops the session manager, releasing any open browser
+    sessions.
+    """
     settings: Settings = app.state.settings
     app.state.session_manager = SessionManager(headless=settings.headless)
     app.state.filehub_client = FileHubClient(settings.file_hub_base_url)
@@ -103,6 +110,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build and wire the ``robotsix-browser`` FastAPI application.
+
+    Returns a FastAPI app titled ``robotsix-browser`` (an interactive
+    headless-browser / form-filling service) with all route handlers
+    registered: health/chat-skill docs, vault metadata listing
+    (``/vault/collections``, ``/vault/items``), and session lifecycle plus
+    per-session browser operations (``/sessions`` open/close, ``navigate``,
+    ``state``, and the other action endpoints).
+
+    Shared resources are provided through the ``get_manager``,
+    ``get_filehub``, and ``get_vault`` dependencies, which read the
+    ``SessionManager``, ``FileHubClient``, and ``VaultClient`` that the
+    ``lifespan`` hook constructs on ``app.state``.
+    """
     app = FastAPI(
         title="robotsix-browser",
         summary="Interactive headless-browser / form-filling service.",
@@ -213,6 +234,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: NavigateRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
+        """Navigate the session's page to the requested URL.
+
+        Looks up the session and delegates to ``operations.navigate``.
+
+        Raises:
+            HTTPException: 400 when the target URL is unsupported
+                (``UnsupportedUrlError``).
+        """
         session = _lookup(manager, session_id)
         try:
             url = await operations.navigate(session.page, request)
