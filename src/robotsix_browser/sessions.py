@@ -36,8 +36,11 @@ class SessionManager:
     require a browser binary to be installed.
     """
 
-    def __init__(self, *, headless: bool = True) -> None:
+    def __init__(
+        self, *, headless: bool = True, default_timeout_ms: int | None = None
+    ) -> None:
         self._headless = headless
+        self._default_timeout_ms = default_timeout_ms
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._sessions: dict[str, Session] = {}
@@ -62,6 +65,12 @@ class SessionManager:
             new_id = session_id or uuid.uuid4().hex
             context = await browser.new_context()
             page = await context.new_page()
+            if self._default_timeout_ms is not None:
+                # Wire the configured "Default action timeout" into Playwright's
+                # page-level defaults so click / fill / select / wait operations
+                # and navigations pick it up unless a request overrides it.
+                page.set_default_timeout(self._default_timeout_ms)
+                page.set_default_navigation_timeout(self._default_timeout_ms)
             session = Session(id=new_id, context=context, page=page)
             self._sessions[new_id] = session
             return session
