@@ -81,6 +81,19 @@ def test_mutating_actions_are_confirmation_gated_and_reads_are_not() -> None:
 def test_documented_endpoints_match_app_routes() -> None:
     from fastapi.routing import APIRoute
 
+    # FastAPI mounts its own documentation routes (/openapi.json, /docs,
+    # /docs/oauth2-redirect, /redoc) alongside the app's endpoints.  They are
+    # framework-internal and never part of the skill document, so exclude them
+    # by path as well as by class: today they are plain starlette Routes
+    # (already dropped by the isinstance filter), but excluding by path keeps
+    # the comparison robust if a FastAPI upgrade turns them into APIRoutes.
+    _FRAMEWORK_DOC_ROUTES = {
+        "/openapi.json",
+        "/docs",
+        "/docs/oauth2-redirect",
+        "/redoc",
+    }
+
     doc = chat_skill()
     documented = {
         (entry["method"], entry["path"].replace("{id}", "{session_id}"))
@@ -90,7 +103,11 @@ def test_documented_endpoints_match_app_routes() -> None:
     app = create_app(Settings(headless=True))
     app_routes: set[tuple[str, str]] = set()
     for route in app.routes:
-        if not isinstance(route, APIRoute) or route.path in {"/health", "/chat-skill"}:
+        if (
+            not isinstance(route, APIRoute)
+            or route.path in {"/health", "/chat-skill"}
+            or route.path in _FRAMEWORK_DOC_ROUTES
+        ):
             continue
         methods = {m for m in route.methods if m in _METHODS}
         assert len(methods) == 1, f"route {route.path} has methods {methods!r}"
