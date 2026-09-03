@@ -52,7 +52,7 @@ from robotsix_browser.models import (
     VaultItemsResponse,
     WaitRequest,
 )
-from robotsix_browser.operations import UnsupportedUrlError
+from robotsix_browser.operations import LoginFieldNotFoundError, UnsupportedUrlError
 from robotsix_browser.sessions import Session, SessionManager, SessionNotFoundError
 from robotsix_browser.vault import (
     EntryNotFoundError,
@@ -79,6 +79,11 @@ def get_filehub(request: Request) -> FileHubClient:
 def get_vault(request: Request) -> VaultClient:
     client: VaultClient = request.app.state.vault_client
     return client
+
+
+def get_app_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
 
 
 def _lookup(manager: SessionManager, session_id: str) -> Session:
@@ -324,6 +329,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: FillCredentialsRequest,
         manager: SessionManager = Depends(get_manager),
         vault: VaultClient = Depends(get_vault),
+        settings: Settings = Depends(get_app_settings),
     ) -> ActionResponse:
         """Inject a scoped Vaultwarden entry into the login form.
 
@@ -334,7 +340,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         session = _lookup(manager, session_id)
         try:
-            url = await operations.fill_credentials(session.page, request, vault)
+            url = await operations.fill_credentials(
+                session.page,
+                request,
+                vault,
+                timeout_ms=settings.credential_fill_timeout_ms,
+            )
+        except LoginFieldNotFoundError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except VaultNotConfiguredError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except EntryOutOfScopeError as exc:

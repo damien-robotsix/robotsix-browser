@@ -94,3 +94,19 @@ def client(fake_file: FileHubFile) -> Iterator[TestClient]:
     )
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def fast_fill_client(fake_file: FileHubFile) -> Iterator[TestClient]:
+    """A client whose credential-fill locator timeout is short.
+
+    Keeps the "login field absent" path fast (no 5s wait) while still driving a
+    real browser through the same code path as :func:`client`.
+    """
+    app = create_app(Settings(headless=True, credential_fill_timeout_ms=500))
+    app.dependency_overrides[get_filehub] = lambda: FakeFileHub({"file-123": fake_file})
+    app.dependency_overrides[get_vault] = lambda: FakeVault(
+        {"ovh-portal": VaultCredential(username="svc-ovh", password=FAKE_SECRET)}
+    )
+    with TestClient(app) as test_client:
+        yield test_client
