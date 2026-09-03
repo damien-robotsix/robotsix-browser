@@ -90,6 +90,33 @@ def _lookup(manager: SessionManager, session_id: str) -> Session:
         ) from None
 
 
+def _vault_http_error(exc: VaultError, operation: str) -> HTTPException:
+    """Map a :class:`VaultError` to a safe :class:`HTTPException`.
+
+    Centralizes the status choices shared by the read-only vault endpoints:
+    ``VaultNotConfiguredError`` -> 503, ``VaultUpstreamError`` -> 502 (with a
+    warning log and a reason-bearing detail), and any other ``VaultError`` ->
+    502 with a generic detail.  ``operation`` names the endpoint action, used in
+    both the log line and the error detail (e.g. ``"vault collection list"``).
+    """
+    if isinstance(exc, VaultNotConfiguredError):
+        return HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, VaultUpstreamError):
+        logger.warning(
+            "%s failed (upstream HTTP %s): %s",
+            operation,
+            exc.status_code,
+            exc.reason,
+        )
+        return HTTPException(
+            status_code=502,
+            detail=(
+                f"{operation} failed (upstream HTTP {exc.status_code}): {exc.reason}"
+            ),
+        )
+    return HTTPException(status_code=502, detail=f"{operation} failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan hook managing per-app resources.
@@ -151,25 +178,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         try:
             collections = await vault.list_collections()
-        except VaultNotConfiguredError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except VaultUpstreamError as exc:
-            logger.warning(
-                "vault collection list failed (upstream HTTP %s): %s",
-                exc.status_code,
-                exc.reason,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "vault collection list failed (upstream HTTP "
-                    f"{exc.status_code}): {exc.reason}"
-                ),
-            ) from exc
         except VaultError as exc:
-            raise HTTPException(
-                status_code=502, detail="vault collection list failed"
-            ) from exc
+            raise _vault_http_error(exc, "vault collection list") from exc
         return VaultCollectionsResponse(
             collections=[
                 VaultCollectionInfo(id=c["id"], name=c["name"]) for c in collections
@@ -189,25 +199,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         try:
             items = await vault.list_items()
-        except VaultNotConfiguredError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except VaultUpstreamError as exc:
-            logger.warning(
-                "vault item list failed (upstream HTTP %s): %s",
-                exc.status_code,
-                exc.reason,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "vault item list failed (upstream HTTP "
-                    f"{exc.status_code}): {exc.reason}"
-                ),
-            ) from exc
         except VaultError as exc:
-            raise HTTPException(
-                status_code=502, detail="vault item list failed"
-            ) from exc
+            raise _vault_http_error(exc, "vault item list") from exc
         return VaultItemsResponse(
             items=[VaultItemInfo(id=i["id"], name=i["name"]) for i in items]
         )
