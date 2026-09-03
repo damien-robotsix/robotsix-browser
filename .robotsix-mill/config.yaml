@@ -1,0 +1,3 @@
+languages:
+  - python
+test_command: uv run --frozen pytest
