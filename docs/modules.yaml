@@ -24,6 +24,8 @@ modules:
       - src/robotsix_browser/__init__.py
       - src/robotsix_browser/__main__.py
       - src/robotsix_browser/app.py
+      - src/robotsix_browser/bwcrypto.py
+      - src/robotsix_browser/chat_skill.py
       - src/robotsix_browser/config.py
       - src/robotsix_browser/filehub.py
       - src/robotsix_browser/models.py
@@ -36,7 +38,12 @@ modules:
     paths:
       - tests/conftest.py
       - tests/test_api.py
+      - tests/test_bwcrypto.py
+      - tests/test_chat_skill.py
       - tests/test_filehub.py
+      - tests/test_linkedin_fill_live.py
       - tests/test_models.py
       - tests/test_operations.py
+      - tests/test_sessions.py
       - tests/test_vault.py
+      - tests/vault_fixtures.py
