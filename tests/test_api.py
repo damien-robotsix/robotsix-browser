@@ -88,6 +88,23 @@ def test_smoke_fill_and_read_back(browser_available: None, client: TestClient) -
     assert value.json() == {"selector": "#name", "value": "Ada"}
 
 
+def test_value_missing_selector_returns_404(
+    browser_available: None, client: TestClient
+) -> None:
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})
+
+    response = client.get(
+        f"/sessions/{session_id}/value", params={"selector": "#does-not-exist"}
+    )
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    # The body names the selector and the no-match reason, no stack trace.
+    assert "#does-not-exist" in detail
+    assert "matched no element" in detail
+    assert "Traceback" not in detail
+
+
 def test_state_returns_tree_and_screenshot(
     browser_available: None, client: TestClient
 ) -> None:

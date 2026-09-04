@@ -47,6 +47,15 @@ class LoginFieldNotFoundError(LookupError):
     """
 
 
+class SelectorNotFoundError(LookupError):
+    """Raised when a ``/value`` selector matches no element on the page.
+
+    Lets the HTTP layer return a clean 404 instead of letting a Playwright
+    :class:`TimeoutError` bubble up as a 500 / stack trace when the selector
+    never resolves to an element.
+    """
+
+
 #: Default bounded timeout (ms) for locating a login field during credential
 #: fill.  Deliberately far shorter than the global 30s action default so a
 #: missing login form fails fast instead of blocking the request.
@@ -54,6 +63,11 @@ _CREDENTIAL_FILL_TIMEOUT_MS = 5_000
 
 #: Bounded timeout (ms) for the best-effort consent-wall dismissal click.
 _CONSENT_DISMISS_TIMEOUT_MS = 2_000
+
+#: Bounded timeout (ms) for locating an element when reading its value.
+#: Far shorter than the global 30s action default so a missing selector fails
+#: fast with a clean 404 instead of hanging the request.
+_READ_VALUE_TIMEOUT_MS = 5_000
 
 #: ARIA accessible-name pattern for common cookie-consent / "accept & continue"
 #: interstitial buttons dismissed best-effort before filling the login form.
@@ -305,7 +319,19 @@ async def wait(page: Page, request: WaitRequest) -> str:
 
 
 async def read_value(page: Page, selector: str) -> str:
-    return await page.input_value(selector)
+    """Read the current value of the field matched by ``selector``.
+
+    Uses a bounded timeout so a selector that matches no element fails fast and
+    raises :class:`SelectorNotFoundError` (mapped to a clean 404) instead of
+    letting the Playwright :class:`TimeoutError` bubble up as a 500 after the
+    30s global default.
+    """
+    try:
+        return await page.input_value(selector, timeout=_READ_VALUE_TIMEOUT_MS)
+    except PlaywrightTimeoutError as exc:
+        raise SelectorNotFoundError(
+            f"selector '{selector}' matched no element"
+        ) from exc
 
 
 async def submit(page: Page, request: SubmitRequest) -> str:
