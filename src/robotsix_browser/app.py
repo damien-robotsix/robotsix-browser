@@ -146,7 +146,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build and wire the ``robotsix-browser`` FastAPI application.
 
-    Returns a FastAPI app titled ``robotsix-browser`` (an interactive
+    This is the main application factory entrypoint: it constructs a fresh
+    :class:`~fastapi.FastAPI` instance, stores the effective settings on
+    ``app.state.settings``, and registers every route handler, dependency,
+    and the ``lifespan`` hook needed to run the service.
+
+    The returned app is titled ``robotsix-browser`` (an interactive
     headless-browser / form-filling service) with all route handlers
     registered: health/chat-skill docs, vault metadata listing
     (``/vault/collections``, ``/vault/items``), and session lifecycle plus
@@ -156,7 +161,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Shared resources are provided through the ``get_manager``,
     ``get_filehub``, and ``get_vault`` dependencies, which read the
     ``SessionManager``, ``FileHubClient``, and ``VaultClient`` that the
-    ``lifespan`` hook constructs on ``app.state``.
+    ``lifespan`` hook constructs on ``app.state`` at startup and tears down
+    on shutdown.
+
+    Args:
+        settings: Optional :class:`Settings` configuration object controlling
+            browser and upstream-service behaviour (headless mode, default
+            timeout, File Hub / Vault endpoints, etc.). When ``None`` (the
+            default), settings are loaded from the environment via
+            ``get_settings()``.
+
+    Returns:
+        The fully configured :class:`~fastapi.FastAPI` application instance,
+        ready to be served by an ASGI server.
     """
     app = FastAPI(
         title="robotsix-browser",
