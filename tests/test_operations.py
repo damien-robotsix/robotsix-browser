@@ -9,6 +9,8 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from robotsix_browser.models import ClickRequest
 from robotsix_browser.operations import (
+    _CLICK_TIMEOUT_MS,
+    _READ_VALUE_TIMEOUT_MS,
     SelectorNotFoundError,
     UnsupportedUrlError,
     _validate_url,
@@ -41,7 +43,11 @@ def test_validate_url_rejects_disallowed_schemes(url: str) -> None:
 class _MissingElementPage:
     """Minimal fake page whose ``input_value`` times out like a real miss."""
 
+    def __init__(self) -> None:
+        self.seen_timeout: float | None = None
+
     async def input_value(self, selector: str, timeout: float | None = None) -> str:
+        self.seen_timeout = timeout
         raise PlaywrightTimeoutError("Timeout exceeded")
 
 
@@ -57,8 +63,10 @@ class _FakeLocator:
 
     def __init__(self, *, missing: bool = False) -> None:
         self._missing = missing
+        self.seen_timeout: float | None = None
 
     async def click(self, timeout: float | None = None) -> None:
+        self.seen_timeout = timeout
         if self._missing:
             raise PlaywrightTimeoutError("Timeout exceeded")
 
@@ -79,11 +87,17 @@ class _PresentTargetPage:
 class _MissingTargetPage:
     """Minimal fake page whose click targets are absent (click times out)."""
 
+    def __init__(self) -> None:
+        self.locator_seen: _FakeLocator | None = None
+        self.role_locator_seen: _FakeLocator | None = None
+
     def locator(self, selector: str) -> _FakeLocator:
-        return _FakeLocator(missing=True)
+        self.locator_seen = _FakeLocator(missing=True)
+        return self.locator_seen
 
     def get_by_role(self, role: Any, name: str | None = None) -> _FakeLocator:
-        return _FakeLocator(missing=True)
+        self.role_locator_seen = _FakeLocator(missing=True)
+        return self.role_locator_seen
 
 
 async def test_read_value_missing_selector_raises_clean_error() -> None:
@@ -92,6 +106,9 @@ async def test_read_value_missing_selector_raises_clean_error() -> None:
         await read_value(page, "#does-not-exist")
     assert "#does-not-exist" in str(excinfo.value)
     assert "matched no element" in str(excinfo.value)
+    # The miss is probed within the bounded locator timeout, not the global
+    # 30s action default — this is what makes the clean 404 arrive fast.
+    assert page.seen_timeout == _READ_VALUE_TIMEOUT_MS
 
 
 async def test_read_value_returns_field_value() -> None:
@@ -105,6 +122,10 @@ async def test_click_missing_selector_raises_clean_error() -> None:
         await click(page, ClickRequest(selector="#does-not-exist"))
     assert "#does-not-exist" in str(excinfo.value)
     assert "matched no element" in str(excinfo.value)
+    # The miss is probed within the bounded click timeout, not the global
+    # 30s action default — this is what makes the clean 404 arrive fast.
+    assert page.locator_seen is not None
+    assert page.locator_seen.seen_timeout == _CLICK_TIMEOUT_MS
 
 
 async def test_click_missing_role_name_raises_clean_error() -> None:
@@ -114,6 +135,9 @@ async def test_click_missing_role_name_raises_clean_error() -> None:
     assert "button" in str(excinfo.value)
     assert "Sign in" in str(excinfo.value)
     assert "matched no element" in str(excinfo.value)
+    # The role+name miss is likewise probed within the bounded click timeout.
+    assert page.role_locator_seen is not None
+    assert page.role_locator_seen.seen_timeout == _CLICK_TIMEOUT_MS
 
 
 async def test_click_selector_on_present_target_returns_url() -> None:
