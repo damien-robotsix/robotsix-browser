@@ -285,7 +285,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
         session = _lookup(manager, session_id)
-        return ActionResponse(url=await operations.click(session.page, request))
+        try:
+            url = await operations.click(session.page, request)
+        except SelectorNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return ActionResponse(url=url)
 
     @app.post("/sessions/{session_id}/type", response_model=ActionResponse)
     async def type_text(

@@ -48,11 +48,11 @@ class LoginFieldNotFoundError(LookupError):
 
 
 class SelectorNotFoundError(LookupError):
-    """Raised when a ``/value`` selector matches no element on the page.
+    """Raised when a click / value target matches no element on the page.
 
     Lets the HTTP layer return a clean 404 instead of letting a Playwright
-    :class:`TimeoutError` bubble up as a 500 / stack trace when the selector
-    never resolves to an element.
+    :class:`TimeoutError` bubble up as a 500 / stack trace when the target
+    (CSS selector or ARIA role + name) never resolves to an element.
     """
 
 
@@ -68,6 +68,11 @@ _CONSENT_DISMISS_TIMEOUT_MS = 2_000
 #: Far shorter than the global 30s action default so a missing selector fails
 #: fast with a clean 404 instead of hanging the request.
 _READ_VALUE_TIMEOUT_MS = 5_000
+
+#: Bounded timeout (ms) for locating an element to click.
+#: Far shorter than the global 30s action default so a missing selector or
+#: role+name target fails fast with a clean 404 instead of hanging the request.
+_CLICK_TIMEOUT_MS = 5_000
 
 #: ARIA accessible-name pattern for common cookie-consent / "accept & continue"
 #: interstitial buttons dismissed best-effort before filling the login form.
@@ -112,6 +117,17 @@ def _target_locator(
     return page.get_by_role(aria_role)
 
 
+def _describe_target(
+    *, selector: str | None, role: str | None, name: str | None
+) -> str:
+    """Human-readable description of a click target for error messages."""
+    if selector:
+        return f"selector {selector!r}"
+    if name:
+        return f"role {role!r} with name {name!r}"
+    return f"role {role!r}"
+
+
 async def navigate(page: Page, request: NavigateRequest) -> str:
     await page.goto(_validate_url(request.url), wait_until=request.wait_until)
     return page.url
@@ -132,7 +148,13 @@ async def click(page: Page, request: ClickRequest) -> str:
     locator = _target_locator(
         page, selector=request.selector, role=request.role, name=request.name
     )
-    await locator.click()
+    try:
+        await locator.click(timeout=_CLICK_TIMEOUT_MS)
+    except PlaywrightTimeoutError as exc:
+        target = _describe_target(
+            selector=request.selector, role=request.role, name=request.name
+        )
+        raise SelectorNotFoundError(f"{target} matched no element") from exc
     return page.url
 
 
