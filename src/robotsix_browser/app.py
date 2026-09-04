@@ -52,7 +52,11 @@ from robotsix_browser.models import (
     VaultItemsResponse,
     WaitRequest,
 )
-from robotsix_browser.operations import LoginFieldNotFoundError, UnsupportedUrlError
+from robotsix_browser.operations import (
+    LoginFieldNotFoundError,
+    SelectorNotFoundError,
+    UnsupportedUrlError,
+)
 from robotsix_browser.sessions import Session, SessionManager, SessionNotFoundError
 from robotsix_browser.vault import (
     EntryNotFoundError,
@@ -335,10 +339,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         manager: SessionManager = Depends(get_manager),
     ) -> ValueResponse:
         session = _lookup(manager, session_id)
-        return ValueResponse(
-            selector=selector,
-            value=await operations.read_value(session.page, selector),
-        )
+        try:
+            current = await operations.read_value(session.page, selector)
+        except SelectorNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return ValueResponse(selector=selector, value=current)
 
     @app.post("/sessions/{session_id}/fill-credentials", response_model=ActionResponse)
     async def fill_credentials(
