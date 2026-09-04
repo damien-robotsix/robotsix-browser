@@ -8,6 +8,7 @@ when no browser binary is installed.
 from __future__ import annotations
 
 import logging
+import time
 from types import SimpleNamespace
 from urllib.parse import quote
 
@@ -16,6 +17,13 @@ from fastapi.testclient import TestClient
 
 from robotsix_browser.app import get_manager, get_vault
 from robotsix_browser.vault import VaultNotConfiguredError, VaultUpstreamError
+
+#: Upper bound (seconds) for a selector-miss 404 response.  The /value and
+#: /click miss probes use a 5s bounded locator timeout (far below the 30s
+#: global action default), so a clean miss response must arrive well under
+#: this cap — one that regressed to the unbounded/global timeout would blow
+#: past it.
+_MISS_RESPONSE_MAX_S = 25
 
 _FORM_HTML = (
     "<form><input id='name'>"
@@ -36,6 +44,23 @@ _CLASSIC_LOGIN_HTML = (
 _GUEST_LOGIN_HTML = (
     "<form><input id='session_key' type='text' name='session_key'>"
     "<input id='session_password' type='password' name='session_password'></form>"
+)
+
+#: Locale/alternate login shape: field ids differ from the classic LinkedIn
+#: ones, so detection binds through the generic fallback tiers (``name*='mail'``
+#: for the username, ``type='password'`` for the password) instead of the
+#: hard-coded ``#username`` / ``#session_key`` ids.
+_LOCALE_LOGIN_HTML = (
+    "<form><input id='benutzername' type='text' name='email'>"
+    "<input id='passwort' type='password' name='passwort'></form>"
+)
+
+#: Login form whose username field is discoverable only via its ARIA
+#: accessible name (``aria-label='Username'``) — no structural attribute
+#: matches any fallback tier, so the ARIA role+name locator must bind it.
+_ARIA_LOGIN_HTML = (
+    "<form><input id='u' type='text' aria-label='Username'>"
+    "<input id='p' type='password' aria-label='Password'></form>"
 )
 
 
@@ -94,15 +119,22 @@ def test_value_missing_selector_returns_404(
     session_id = client.post("/sessions", json={}).json()["session_id"]
     client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})
 
+    started = time.monotonic()
     response = client.get(
         f"/sessions/{session_id}/value", params={"selector": "#does-not-exist"}
     )
+    elapsed = time.monotonic() - started
+
     assert response.status_code == 404
     detail = response.json()["detail"]
     # The body names the selector and the no-match reason, no stack trace.
     assert "#does-not-exist" in detail
     assert "matched no element" in detail
     assert "Traceback" not in detail
+    # The miss is probed within the bounded locator timeout (not the 30s
+    # global action default), so the clean 404 arrives fast instead of
+    # hanging the request.
+    assert elapsed < _MISS_RESPONSE_MAX_S
 
 
 def test_click_missing_selector_returns_404(
@@ -111,15 +143,22 @@ def test_click_missing_selector_returns_404(
     session_id = client.post("/sessions", json={}).json()["session_id"]
     client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})
 
+    started = time.monotonic()
     response = client.post(
         f"/sessions/{session_id}/click", json={"selector": "#does-not-exist"}
     )
+    elapsed = time.monotonic() - started
+
     assert response.status_code == 404
     detail = response.json()["detail"]
     # The body names the selector and the no-match reason, no stack trace.
     assert "#does-not-exist" in detail
     assert "matched no element" in detail
     assert "Traceback" not in detail
+    # The miss is probed within the bounded locator timeout (not the 30s
+    # global action default), so the clean 404 arrives fast instead of
+    # hanging the request.
+    assert elapsed < _MISS_RESPONSE_MAX_S
 
 
 def test_click_missing_role_name_returns_404(
@@ -128,10 +167,13 @@ def test_click_missing_role_name_returns_404(
     session_id = client.post("/sessions", json={}).json()["session_id"]
     client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})
 
+    started = time.monotonic()
     response = client.post(
         f"/sessions/{session_id}/click",
         json={"role": "button", "name": "definitely-not-there"},
     )
+    elapsed = time.monotonic() - started
+
     assert response.status_code == 404
     detail = response.json()["detail"]
     # The body names the role+name and the no-match reason, no stack trace.
@@ -139,6 +181,10 @@ def test_click_missing_role_name_returns_404(
     assert "definitely-not-there" in detail
     assert "matched no element" in detail
     assert "Traceback" not in detail
+    # The role+name miss is probed within the bounded locator timeout (not
+    # the 30s global action default), so the clean 404 arrives fast instead
+    # of hanging the request.
+    assert elapsed < _MISS_RESPONSE_MAX_S
 
 
 def test_click_happy_path(browser_available: None, client: TestClient) -> None:
@@ -300,9 +346,10 @@ def test_fill_credentials_dismisses_consent_wall_then_fills(
     [
         (_CLASSIC_LOGIN_HTML, "#username"),
         (_GUEST_LOGIN_HTML, "#session_key"),
+        (_LOCALE_LOGIN_HTML, "#benutzername"),
     ],
 )
-def test_fill_credentials_binds_classic_and_guest_forms(
+def test_fill_credentials_binds_classic_guest_and_locale_forms(
     browser_available: None,
     fast_fill_client: TestClient,
     fake_secret: str,
@@ -310,7 +357,9 @@ def test_fill_credentials_binds_classic_and_guest_forms(
     uid: str,
 ) -> None:
     """The username/password fields are located via detection, not the literal
-    caller-supplied selectors (which are intentionally absent), and filled."""
+    caller-supplied selectors (which are intentionally absent), and filled.
+    Covers the classic LinkedIn member-login, guest sign-in and a
+    locale/alternate shape."""
     session_id = fast_fill_client.post("/sessions", json={}).json()["session_id"]
     fast_fill_client.post(
         f"/sessions/{session_id}/navigate", json={"url": _data_url(html)}
@@ -331,6 +380,39 @@ def test_fill_credentials_binds_classic_and_guest_forms(
 
     user = fast_fill_client.get(
         f"/sessions/{session_id}/value", params={"selector": uid}
+    )
+    assert user.json()["value"] == "svc-ovh"
+
+
+def test_fill_credentials_aria_role_locator_fills(
+    browser_available: None, fast_fill_client: TestClient, fake_secret: str
+) -> None:
+    """The ARIA-role-aware locator binds a username reachable only via its
+    accessible name (no id/name/type matches any structural fallback tier)
+    and fills both credentials."""
+    session_id = fast_fill_client.post("/sessions", json={}).json()["session_id"]
+    fast_fill_client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(_ARIA_LOGIN_HTML)}
+    )
+
+    response = fast_fill_client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "ovh-portal",
+            # The literal ids #user/#pass do not exist on this form and no
+            # structural attribute matches; only the ARIA accessible name
+            # ('Username') can bind the username field.
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 200
+    assert fake_secret not in response.text
+
+    # 200 above means both fields were located and filled (any miss raises a
+    # clean 422); the username is read back to prove the write landed.
+    user = fast_fill_client.get(
+        f"/sessions/{session_id}/value", params={"selector": "#u"}
     )
     assert user.json()["value"] == "svc-ovh"
 
