@@ -167,6 +167,25 @@ POST /sessions/{id}/fill-credentials
 // → 200 {"status": "ok", "url": "..."}   — value NEVER returned
 ```
 
+**Field detection.** The supplied `username_selector` / `password_selector`
+are just the *first* (highest-priority) candidates. The fields are actually
+located via a prioritized fallback list so classic member-login, guest
+sign-in, and locale variant forms all bind when present:
+
+- Username/email: caller selector → `#username`, `#session_key`, `#email`,
+  `#login` → `input[type=email]` → `autocomplete="username"|"email"` →
+  `name` containing `user`/`mail`/`login` (case-insensitive) → ARIA
+  role + accessible-name match (`textbox` whose name mentions
+  username/user/email/e-mail/login/sign-in/account/identifier).
+- Password: caller selector → `#password`, `#session_password`, `#passwd` →
+  `input[type=password]` → `autocomplete="current-password"` → `name`
+  containing `pass` (case-insensitive) → ARIA role + accessible-name match
+  (`textbox` whose name mentions password).
+
+If no candidate matches, the endpoint returns a clean 4xx (e.g. `422` with a
+`"login <field> not found"` reason) instead of hanging or returning a 500.
+Vault decrypt/unlock behavior is unchanged.
+
 Security model:
 
 - **Bitwarden API + client credentials.** The service authenticates to the operator's

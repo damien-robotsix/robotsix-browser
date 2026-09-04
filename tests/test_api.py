@@ -26,6 +26,18 @@ _FORM_HTML = (
 
 _LOGIN_HTML = "<form><input id='user'><input id='pass' type='password'></form>"
 
+#: Classic LinkedIn member-login form: ``#username`` / ``#password``.
+_CLASSIC_LOGIN_HTML = (
+    "<form><input id='username' type='text' name='session_key'>"
+    "<input id='password' type='password' name='session_password'></form>"
+)
+
+#: LinkedIn guest sign-in form: ``#session_key`` / ``#session_password``.
+_GUEST_LOGIN_HTML = (
+    "<form><input id='session_key' type='text' name='session_key'>"
+    "<input id='session_password' type='password' name='session_password'></form>"
+)
+
 
 def _data_url(html: str) -> str:
     return "data:text/html," + quote(html)
@@ -218,6 +230,46 @@ def test_fill_credentials_dismisses_consent_wall_then_fills(
 
     user = fast_fill_client.get(
         f"/sessions/{session_id}/value", params={"selector": "#user"}
+    )
+    assert user.json()["value"] == "svc-ovh"
+
+
+@pytest.mark.parametrize(
+    ("html", "uid"),
+    [
+        (_CLASSIC_LOGIN_HTML, "#username"),
+        (_GUEST_LOGIN_HTML, "#session_key"),
+    ],
+)
+def test_fill_credentials_binds_classic_and_guest_forms(
+    browser_available: None,
+    fast_fill_client: TestClient,
+    fake_secret: str,
+    html: str,
+    uid: str,
+) -> None:
+    """The username/password fields are located via detection, not the literal
+    caller-supplied selectors (which are intentionally absent), and filled."""
+    session_id = fast_fill_client.post("/sessions", json={}).json()["session_id"]
+    fast_fill_client.post(
+        f"/sessions/{session_id}/navigate", json={"url": _data_url(html)}
+    )
+
+    response = fast_fill_client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={
+            "entry": "ovh-portal",
+            # Literal ids #user/#pass do not exist on these forms; detection
+            # must bind the real fields via the fallback list.
+            "username_selector": "#user",
+            "password_selector": "#pass",
+        },
+    )
+    assert response.status_code == 200
+    assert fake_secret not in response.text
+
+    user = fast_fill_client.get(
+        f"/sessions/{session_id}/value", params={"selector": uid}
     )
     assert user.json()["value"] == "svc-ovh"
 

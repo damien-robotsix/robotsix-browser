@@ -62,6 +62,19 @@ _CONSENT_BUTTON_NAME = re.compile(
     re.IGNORECASE,
 )
 
+#: ARIA accessible-name pattern for a username / email / login textbox.
+#: Matched anywhere in the accessible name (re.search semantics).
+_USERNAME_NAME = re.compile(
+    r"\busername\b|\buser\b|\bemail\b|\be-?mail\b|\blogin\b|\bsign.?in\b|\baccount\b|\bidentifier\b",
+    re.IGNORECASE,
+)
+
+#: ARIA accessible-name pattern for a password textbox.
+#: Matched anywhere in the accessible name (re.search semantics).
+_PASSWORD_NAME = re.compile(
+    r"password|passwd|pass phrase|current password", re.IGNORECASE
+)
+
 
 def _validate_url(url: str) -> str:
     scheme = urlparse(url).scheme.lower()
@@ -153,20 +166,92 @@ async def _dismiss_consent_walls(page: Page) -> None:
 
 
 async def _fill_login_field(
-    page: Page, selector: str, value: str, *, timeout_ms: int
+    page: Page, locator: Locator, value: str, *, timeout_ms: int
 ) -> None:
     """Fill a single login field within a bounded timeout.
 
     Raises :class:`LoginFieldNotFoundError` (mapped to a clean 4xx) instead of
     letting the Playwright :class:`TimeoutError` bubble up as a 500 when the
-    selector never appears.
+    locator never appears.
     """
     try:
-        await page.fill(selector, value, timeout=timeout_ms)
+        await locator.fill(value, timeout=timeout_ms)
     except PlaywrightTimeoutError as exc:
         raise LoginFieldNotFoundError(
-            f"login field {selector!r} not found on current page"
+            f"login field {locator} not found on current page"
         ) from exc
+
+
+def _username_candidates(page: Page, client_selector: str) -> list[Locator]:
+    """Prioritized candidate locators for the username / email input.
+
+    Order: the caller-supplied CSS selector, the classic LinkedIn member-login
+    and guest sign-in ids, ``type=email``, then structural attributes
+    (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
+    matching — so detection does not rely on hard-coded CSS ids alone.
+    """
+    aria_role = cast(Any, "textbox")
+    return [
+        page.locator(client_selector),
+        page.locator("#username"),
+        page.locator("#session_key"),
+        page.locator("#email"),
+        page.locator("#login"),
+        page.locator("input[type='email']"),
+        page.locator("input[autocomplete='username']"),
+        page.locator("input[autocomplete='email']"),
+        page.locator("input[name*='user' i]"),
+        page.locator("input[name*='mail' i]"),
+        page.locator("input[name*='login' i]"),
+        page.get_by_role(aria_role, name=_USERNAME_NAME),
+    ]
+
+
+def _password_candidates(page: Page, client_selector: str) -> list[Locator]:
+    """Prioritized candidate locators for the password input.
+
+    Order: the caller-supplied CSS selector, the classic LinkedIn member-login
+    and guest sign-in ids, ``type=password``, then structural attributes
+    (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
+    matching — so detection does not rely on hard-coded CSS ids alone.
+    """
+    aria_role = cast(Any, "textbox")
+    return [
+        page.locator(client_selector),
+        page.locator("#password"),
+        page.locator("#session_password"),
+        page.locator("#passwd"),
+        page.locator("input[type='password']"),
+        page.locator("input[autocomplete='current-password']"),
+        page.locator("input[name*='pass' i]"),
+        page.get_by_role(aria_role, name=_PASSWORD_NAME),
+    ]
+
+
+async def _fill_first_existing(
+    page: Page,
+    candidates: list[Locator],
+    value: str,
+    *,
+    field_label: str,
+    timeout_ms: int,
+) -> None:
+    """Fill the first candidate that exists on the current page.
+
+    Falls through the prioritized candidate list so field location uses
+    ARIA/accessible attributes plus the known-id fallbacks rather than one
+    hard-coded selector.  Raises :class:`LoginFieldNotFoundError` (clean 4xx)
+    when no candidate matches, keeping the previous fill-credentials clean
+    failure behavior.
+    """
+    first_selector = candidates[0]
+    for candidate in candidates:
+        if await candidate.count():
+            await _fill_login_field(page, candidate, value, timeout_ms=timeout_ms)
+            return
+    raise LoginFieldNotFoundError(
+        f"login {field_label} field {first_selector} not found on current page"
+    )
 
 
 async def fill_credentials(
@@ -182,18 +267,31 @@ async def fill_credentials(
     This only fills the form — it does NOT submit, preserving the human
     submit-gate (``/submit`` remains the sole submit path).
 
-    Before filling, common cookie-consent / interstitial walls are dismissed
-    best-effort so the login form renders.  Each field is located within a
-    short, bounded ``timeout_ms`` (not the 30s global default); a still-absent
-    selector raises :class:`LoginFieldNotFoundError` for a clean 4xx.
+    Each field is located via a prioritized candidate list — the caller's CSS
+    selector first, then known login ids, input types, name/autocomplete
+    attributes and ARIA role + accessible-name matching — rather than a single
+    hard-coded id, so classic member-login, guest sign-in and locale variants
+    all bind when their fields are present.  Before filling, common
+    cookie-consent / interstitial walls are dismissed best-effort so the login
+    form renders.  Each candidate is located within a short, bounded
+    ``timeout_ms`` (not the 30s global default); a still-absent field raises
+    :class:`LoginFieldNotFoundError` for a clean 4xx.
     """
     credential = await vault.get_credential(request.entry)
     await _dismiss_consent_walls(page)
-    await _fill_login_field(
-        page, request.username_selector, credential.username, timeout_ms=timeout_ms
+    await _fill_first_existing(
+        page,
+        _username_candidates(page, request.username_selector),
+        credential.username,
+        field_label="username",
+        timeout_ms=timeout_ms,
     )
-    await _fill_login_field(
-        page, request.password_selector, credential.password, timeout_ms=timeout_ms
+    await _fill_first_existing(
+        page,
+        _password_candidates(page, request.password_selector),
+        credential.password,
+        field_label="password",
+        timeout_ms=timeout_ms,
     )
     return page.url
 
