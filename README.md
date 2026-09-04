@@ -115,7 +115,7 @@ browser context (its own cookies / storage).
 | `POST /sessions/{id}/select`      | Choose a `<select>` option (by value or label).    |
 | `POST /sessions/{id}/upload`      | Attach a **file-hub file id** to a file input.     |
 | `POST /sessions/{id}/wait`        | Wait for a selector and/or load state.             |
-| `GET /sessions/{id}/value`        | Read back a field's current value.                 |
+| `GET /sessions/{id}/value`        | Read back a field's current value. Returns `404` if selector matches no element. |
 | `POST /sessions/{id}/fill-credentials` | Inject a **scoped Vaultwarden entry** (never echoed). |
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
 | `GET /vault/collections`           | Read-only: collection ids/names the vault key can see. |
