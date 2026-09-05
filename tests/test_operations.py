@@ -15,7 +15,10 @@ from robotsix_browser.operations import (
     LoginFieldNotFoundError,
     SelectorNotFoundError,
     UnsupportedUrlError,
+    _fill_across_frames,
     _fill_first_existing,
+    _is_auth_frame,
+    _login_frames,
     _password_candidates,
     _username_candidates,
     _validate_url,
@@ -277,3 +280,198 @@ async def test_fill_detection_raises_clean_error_when_no_field_present() -> None
     message = str(excinfo.value)
     assert "username" in message
     assert "not found" in message
+
+
+class _FakeFrame:
+    """Minimal fake frame mirroring Playwright's ``Frame`` surface used by
+    frame scoping: ``url``, ``locator`` and ``get_by_role``.
+
+    ``present`` lists the CSS selectors that resolve, ``aria_names`` the
+    accessible names that match the ARIA role locator.  Successful fills are
+    recorded on ``fill_log`` as ``(frame_url, selector, value)`` triples so
+    tests can assert which frame the fill landed in.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        present: set[str] | None = None,
+        aria_names: set[str] | None = None,
+        fill_log: list[tuple[str, str, str]] | None = None,
+    ) -> None:
+        self.url = url
+        self._present = set() if present is None else present
+        self._aria_names = set() if aria_names is None else aria_names
+        self.fill_log = [] if fill_log is None else fill_log
+
+    def locator(self, selector: str) -> _FakeFrameLocator:
+        return _FakeFrameLocator(self, selector, selector in self._present)
+
+    def get_by_role(self, role: Any, name: Any = None) -> _FakeFrameLocator:
+        if isinstance(name, re.Pattern):
+            present = any(name.search(aria) for aria in self._aria_names)
+            selector = f"get_by_role({role}, name={name.pattern})"
+        else:
+            present = name in self._aria_names
+            selector = f"get_by_role({role}, name={name})"
+        return _FakeFrameLocator(self, selector, present)
+
+
+class _FakeFrameLocator:
+    """Minimal locator mirroring a present/absent candidate inside a frame."""
+
+    def __init__(self, frame: _FakeFrame, selector: str, present: bool) -> None:
+        self._frame = frame
+        self._selector = selector
+        self._present = present
+
+    async def count(self) -> int:
+        return 1 if self._present else 0
+
+    async def fill(self, value: str, *, timeout: int | None = None) -> None:
+        self._frame.fill_log.append((self._frame.url, self._selector, value))
+
+
+class _FramesFakePage:
+    """Fake page modelling a main frame plus nested child iframes.
+
+    Exposes the ``main_frame`` / ``frames`` surface used by frame scoping and
+    shares one ``filled`` log across all frames for easy assertions.
+    """
+
+    def __init__(
+        self,
+        main_frame: _FakeFrame,
+        child_frames: list[_FakeFrame] | None = None,
+    ) -> None:
+        self.filled: list[tuple[str, str, str]] = []
+        self.main_frame = main_frame
+        self.frames = [main_frame] + (list(child_frames) if child_frames else [])
+        for frame in self.frames:
+            frame.fill_log = self.filled
+
+
+async def _fill_guest_across_frames(page: Any) -> list[tuple[str, str, str]]:
+    """Drive the two-step detection fill across frames the way ``fill_credentials``
+    does, returning the frame-tagged fill log."""
+    await _fill_across_frames(
+        page,
+        lambda scope: _username_candidates(scope, "#user"),
+        "alice@example.com",
+        field_label="username",
+        timeout_ms=500,
+    )
+    await _fill_across_frames(
+        page,
+        lambda scope: _password_candidates(scope, "#pass"),
+        "s3cr3t",
+        field_label="password",
+        timeout_ms=500,
+    )
+    return page.filled
+
+
+async def test_fill_scopes_to_main_frame_when_cookie_iframe_present() -> None:
+    """The top-level login form wins over a nested cookie-policy iframe: the
+    fill binds the visible form, never the consent iframe's fields."""
+    main = _FakeFrame(
+        "https://www.linkedin.com/login",
+        present={"#session_key", "#session_password"},
+    )
+    cookie = _FakeFrame(
+        "https://fr.linkedin.com/legal/cookie-policy",
+        present={"#email", "input[type='password']"},
+    )
+    page = _FramesFakePage(main, [cookie])
+    filled = await _fill_guest_across_frames(page)
+    assert (
+        "https://www.linkedin.com/login",
+        "#session_key",
+        "alice@example.com",
+    ) in filled
+    assert (
+        "https://www.linkedin.com/login",
+        "#session_password",
+        "s3cr3t",
+    ) in filled
+    assert not any(
+        url == "https://fr.linkedin.com/legal/cookie-policy"
+        for url, _selector, _value in filled
+    )
+
+
+async def test_fill_binds_login_form_only() -> None:
+    """A page with just the login form binds it in the main frame."""
+    main = _FakeFrame("https://example.com/login", present={"#email", "#password"})
+    page = _FramesFakePage(main)
+    filled = await _fill_guest_across_frames(page)
+    assert ("https://example.com/login", "#email", "alice@example.com") in filled
+    assert ("https://example.com/login", "#password", "s3cr3t") in filled
+
+
+async def test_fill_descends_to_same_origin_auth_frame_only() -> None:
+    """When the main frame holds no login form, detection descends into a
+    same-origin auth child frame but still excludes a cross-origin consent
+    iframe even when that iframe contains login-like fields."""
+    main = _FakeFrame("https://example.com/login")
+    auth = _FakeFrame("https://example.com/guest", present={"#email", "#password"})
+    cookie = _FakeFrame(
+        "https://fr.example.com/legal/cookie-policy",
+        present={"#email", "input[type='password']"},
+    )
+    page = _FramesFakePage(main, [auth, cookie])
+    filled = await _fill_guest_across_frames(page)
+    assert ("https://example.com/guest", "#email", "alice@example.com") in filled
+    assert ("https://example.com/guest", "#password", "s3cr3t") in filled
+    assert not any(
+        url == "https://fr.example.com/legal/cookie-policy"
+        for url, _selector, _value in filled
+    )
+
+
+async def test_fill_across_frames_raises_clean_error_on_miss() -> None:
+    """A genuine miss across all eligible frames still fails cleanly (4xx),
+    never a raw timeout."""
+    main = _FakeFrame("https://example.com/login")
+    page = _FramesFakePage(main)
+    with pytest.raises(LoginFieldNotFoundError) as excinfo:
+        await _fill_guest_across_frames(page)
+    message = str(excinfo.value)
+    assert "username" in message
+    assert "not found" in message
+
+
+def test_auth_frame_excludes_cross_origin_and_consent_frames() -> None:
+    """Only same-origin, non-consent frames are eligible for login detection."""
+    main_url = "https://www.linkedin.com/login"
+    assert (
+        _is_auth_frame(_FakeFrame("https://www.linkedin.com/guest"), main_url) is True
+    )
+    # Cross-origin cookie-policy iframe is excluded.
+    assert (
+        _is_auth_frame(
+            _FakeFrame("https://fr.linkedin.com/legal/cookie-policy"), main_url
+        )
+        is False
+    )
+    # Same-origin but legal/consent path is still excluded.
+    assert (
+        _is_auth_frame(
+            _FakeFrame("https://www.linkedin.com/legal/cookie-policy"), main_url
+        )
+        is False
+    )
+    # Blank frames are never auth content.
+    assert _is_auth_frame(_FakeFrame("about:blank"), main_url) is False
+
+
+def test_login_frames_orders_main_first_and_filters_children() -> None:
+    """The top-level frame always leads; only eligible child frames follow."""
+    main = _FakeFrame("https://www.linkedin.com/login")
+    auth = _FakeFrame("https://www.linkedin.com/guest")
+    cookie = _FakeFrame("https://fr.linkedin.com/legal/cookie-policy")
+    page = _FramesFakePage(main, [auth, cookie])
+    frames = _login_frames(page)
+    assert frames[0] is main
+    assert auth in frames
+    assert cookie not in frames
