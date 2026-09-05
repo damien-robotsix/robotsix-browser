@@ -26,6 +26,11 @@ class Session:
     id: str
     context: BrowserContext
     page: Page
+    #: The URL the operator most recently asked the session to navigate to (the
+    #: *intended* target, before any LinkedIn-style consent redirect).  Used by
+    #: fill-credentials to re-navigate to the real login form after it
+    #: establishes consent on a cookie-policy redirect.
+    last_navigation_url: str | None = None
 
 
 class SessionManager:
