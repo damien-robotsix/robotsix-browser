@@ -109,13 +109,15 @@ _CONSENT_FRAME_PATTERN = re.compile(
 #: URL path signals for a *full-page* consent redirect: the top-level page was
 #: hard-redirected away from a login to a cookie-policy / consent wall.  This
 #: is distinct from :data:`_CONSENT_FRAME_PATTERN`, which flags consent
-#: *iframes* nested under the main page.  It targets the LinkedIn
-#: ``/legal/cookie-policy`` whole-page redirect (and equivalents such as
-#: ``/cookie-policy`` / ``/consent``) so fill-credentials can recover before
-#: attempting to bind the (now absent) login form.
+#: *iframes* nested under the main page.  It targets the LinkedIn whole-page
+#: legal redirects — live-validated against the real wall, a fresh US/guest
+#: session hard-redirects to ``/legal/user-agreement`` while the EU one goes to
+#: ``/legal/cookie-policy`` — plus equivalents such as ``/cookie-policy`` /
+#: ``/consent``, so fill-credentials can recover before attempting to bind the
+#: (now absent) login form.
 _CONSENT_REDIRECT_PATTERN = re.compile(
-    r"/legal/cookie(?:-|_)policy(?=[/?#]|$)|/cookie(?:-|_)policy(?=[/?#]|$)|"
-    r"/consent(?=[/?#]|$)",
+    r"/legal/(?:cookie(?:-|_)policy|user(?:-|_)agreement)(?=[/?#]|$)|"
+    r"/cookie(?:-|_)policy(?=[/?#]|$)|/consent(?=[/?#]|$)",
     re.IGNORECASE,
 )
 
@@ -175,10 +177,11 @@ _LINKEDIN_CONSENT_COOKIES: tuple[SetCookieParam, ...] = (
 def _is_consent_redirect(url: str) -> bool:
     """Whether ``url`` is a full-page consent / cookie-policy redirect target.
 
-    LinkedIn hard-redirects the whole page to
-    ``fr.linkedin.com/legal/cookie-policy`` when the session carries no consent
-    cookie; detecting this (after navigation, before credential fill) lets
-    fill-credentials establish consent and re-navigate to the login form
+    LinkedIn hard-redirects the whole page to a legal wall — a fresh US/guest
+    session to ``www.linkedin.com/legal/user-agreement``, the EU one to
+    ``fr.linkedin.com/legal/cookie-policy`` — when the session carries no
+    consent cookie; detecting this (after navigation, before credential fill)
+    lets fill-credentials establish consent and re-navigate to the login form
     instead of clean-failing against the wrong page.
     """
     return bool(_CONSENT_REDIRECT_PATTERN.search(url or ""))
@@ -350,21 +353,53 @@ async def _establish_consent(page: Page) -> None:
     await page.context.add_cookies(list(_LINKEDIN_CONSENT_COOKIES))
 
 
+async def _accept_legal_wall(page: Page) -> None:
+    """Best-effort click of the accept / "agree and continue" action on a
+    top-level legal wall (e.g. LinkedIn's ``/legal/user-agreement`` guest
+    gate).
+
+    Unlike :func:`_dismiss_consent_walls` — which intentionally never runs
+    against a full-page consent redirect — this click targets the wall page
+    itself.  For the user-agreement gate, the accept action is what records
+    genuine acceptance server-side (LinkedIn then routes the session back
+    toward the login form); fabricated consent cookies alone cannot clear it.
+    Any failure is swallowed: purely best-effort, must never become a request
+    error.
+    """
+    for role in ("button", "link"):
+        locator = page.get_by_role(cast(Any, role), name=_CONSENT_BUTTON_NAME)
+        try:
+            if await locator.count() == 0:
+                continue
+            await locator.first.click(timeout=_CONSENT_DISMISS_TIMEOUT_MS)
+            return
+        except Exception:
+            continue
+
+
 async def _recover_consent_redirect(page: Page, *, login_url: str | None) -> None:
     """Recover from a full-page consent redirect before attempting a fill.
 
-    When the top-level frame has been redirected to a consent / cookie-policy
-    wall (LinkedIn's ``fr.linkedin.com/legal/cookie-policy``), the login form
-    is gone.  Establish consent in the context and re-navigate to the intended
-    login URL; the now-present consent cookies keep LinkedIn from re-firing the
-    redirect, so the login form renders in the main frame.  A best-effort
-    no-op when the page is not on a consent redirect or no login URL is known.
+    When the top-level frame has been redirected to a consent / legal wall
+    (LinkedIn's ``fr.linkedin.com/legal/cookie-policy`` or the US/guest
+    ``www.linkedin.com/legal/user-agreement``), the login form is gone.
+    Establish consent in the context, best-effort click the wall's own accept
+    / "agree and continue" action (which is what records genuine acceptance
+    for the user-agreement gate), and re-navigate to the intended login URL;
+    the now-present consent state keeps LinkedIn from re-firing the redirect,
+    so the login form renders in the main frame.  A second best-effort accept
+    click follows the re-navigation in case the session still lands back on
+    the wall.  A best-effort no-op when the page is not on a consent redirect
+    or no login URL is known.
     """
     if not _is_consent_redirect(page.main_frame.url or ""):
         return
     await _establish_consent(page)
+    await _accept_legal_wall(page)
     if login_url:
         await page.goto(_validate_url(login_url), wait_until="load")
+    if _is_consent_redirect(page.main_frame.url or ""):
+        await _accept_legal_wall(page)
 
 
 async def _fill_login_field(
@@ -451,7 +486,13 @@ async def _fill_first_existing(
     first_selector = candidates[0]
     for candidate in candidates:
         if await candidate.count():
-            await _fill_login_field(page, candidate, value, timeout_ms=timeout_ms)
+            # A candidate can resolve to several DOM elements (e.g. LinkedIn's
+            # login page renders two ``input[type='email']`` / guest sign-in
+            # fields); fill the first match or Playwright raises a strict-mode
+            # violation on the multi-element locator.
+            await _fill_login_field(
+                page, candidate.first, value, timeout_ms=timeout_ms
+            )
             return
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_selector} not found on current page"
@@ -482,7 +523,9 @@ async def _fill_across_frames(
             if first_desc is None:
                 first_desc = str(candidate)
             if await candidate.count():
-                await _fill_login_field(frame, candidate, value, timeout_ms=timeout_ms)
+                await _fill_login_field(
+                    frame, candidate.first, value, timeout_ms=timeout_ms
+                )
                 return
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_desc or ''} not found on current page"
@@ -527,6 +570,10 @@ async def fill_credentials(
     # the login form can be bound (otherwise we would clean-fail on the wall).
     await _recover_consent_redirect(page, login_url=login_url)
     await _dismiss_consent_walls(page)
+    # The wall can still land after the first check — a delayed client-side
+    # redirect, or a re-redirect once the consent cookies were applied — so
+    # recover once more before binding the login form.
+    await _recover_consent_redirect(page, login_url=login_url)
     await _fill_across_frames(
         page,
         lambda scope: _username_candidates(scope, request.username_selector),
