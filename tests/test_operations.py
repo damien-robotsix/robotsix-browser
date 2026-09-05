@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -11,8 +12,12 @@ from robotsix_browser.models import ClickRequest
 from robotsix_browser.operations import (
     _CLICK_TIMEOUT_MS,
     _READ_VALUE_TIMEOUT_MS,
+    LoginFieldNotFoundError,
     SelectorNotFoundError,
     UnsupportedUrlError,
+    _fill_first_existing,
+    _password_candidates,
+    _username_candidates,
     _validate_url,
     click,
     read_value,
@@ -154,3 +159,112 @@ async def test_click_role_name_on_present_target_returns_url() -> None:
         await click(page, ClickRequest(role="button", name="Sign in"))
         == "https://example.com/after-click"
     )
+
+
+class _DetectionFakePage:
+    """Fake page mirroring which login fields exist on the form.
+
+    ``locator(css)`` is present when the CSS selector is in ``present``;
+    ``get_by_role`` is present when the accessible-name pattern matches one of
+    the ``aria_names``.  Successful fills are recorded on ``filled`` in call
+    order so tests can assert which detection tier bound the field.
+    """
+
+    def __init__(
+        self,
+        present: set[str] | None = None,
+        aria_names: set[str] | None = None,
+    ) -> None:
+        self._present = set() if present is None else present
+        self._aria_names = set() if aria_names is None else aria_names
+        self.filled: list[tuple[str, str]] = []
+
+    def locator(self, selector: str) -> _DetectionFakeLocator:
+        return _DetectionFakeLocator(self, selector, selector in self._present)
+
+    def get_by_role(self, role: Any, name: Any = None) -> _DetectionFakeLocator:
+        if isinstance(name, re.Pattern):
+            present = any(name.search(aria) for aria in self._aria_names)
+            selector = f"get_by_role({role}, name={name.pattern})"
+        else:
+            present = name in self._aria_names
+            selector = f"get_by_role({role}, name={name})"
+        return _DetectionFakeLocator(self, selector, present)
+
+
+class _DetectionFakeLocator:
+    """Minimal locator mirroring a present or absent login-field candidate."""
+
+    def __init__(self, page: _DetectionFakePage, selector: str, present: bool) -> None:
+        self._page = page
+        self._selector = selector
+        self._present = present
+        self.seen_timeout: int | None = None
+
+    async def count(self) -> int:
+        return 1 if self._present else 0
+
+    async def fill(self, value: str, *, timeout: int | None = None) -> None:
+        self.seen_timeout = timeout
+        self._page.filled.append((self._selector, value))
+
+
+async def _fill_guest_credentials(page: Any) -> list[tuple[str, str]]:
+    """Drive the two-step detection fill the way ``fill_credentials`` does.
+
+    The caller-supplied literals ``#user`` / ``#pass`` exist on none of the
+    fixture forms, so binding must come from the candidate fallback tiers.
+    """
+    await _fill_first_existing(
+        page,
+        _username_candidates(page, "#user"),
+        "alice@example.com",
+        field_label="username",
+        timeout_ms=500,
+    )
+    await _fill_first_existing(
+        page,
+        _password_candidates(page, "#pass"),
+        "s3cr3t",
+        field_label="password",
+        timeout_ms=500,
+    )
+    return page.filled
+
+
+async def test_fill_detection_falls_through_to_known_login_ids() -> None:
+    """The guest form's ``#session_key`` / ``#session_password`` still bind via
+    the fallback tier when the caller-supplied selectors match nothing —
+    detection is not tied to the literal CSS passed by the caller."""
+    page: Any = _DetectionFakePage(present={"#session_key", "#session_password"})
+    filled = await _fill_guest_credentials(page)
+    assert ("#session_key", "alice@example.com") in filled
+    assert ("#session_password", "s3cr3t") in filled
+    # The absent literal caller selectors must not have driven the fill.
+    assert not any(selector in {"#user", "#pass"} for selector, _ in filled)
+
+
+async def test_fill_detection_binds_aria_role_locator() -> None:
+    """A form discoverable only through ARIA accessible names binds via the
+    role+name fallback tier — no id/name/type attribute matches anything."""
+    page: Any = _DetectionFakePage(aria_names={"Username", "Password"})
+    filled = await _fill_guest_credentials(page)
+    assert any(
+        selector.startswith("get_by_role(textbox") and value == "alice@example.com"
+        for selector, value in filled
+    )
+    assert any(
+        selector.startswith("get_by_role(textbox") and value == "s3cr3t"
+        for selector, value in filled
+    )
+
+
+async def test_fill_detection_raises_clean_error_when_no_field_present() -> None:
+    """No candidate matching means the clean not-found error (mapped to a 4xx),
+    never a raw timeout."""
+    page: Any = _DetectionFakePage()
+    with pytest.raises(LoginFieldNotFoundError) as excinfo:
+        await _fill_guest_credentials(page)
+    message = str(excinfo.value)
+    assert "username" in message
+    assert "not found" in message
