@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import re
+from collections.abc import Callable
 from typing import Any, cast
 from urllib.parse import urlparse
 
@@ -94,6 +95,16 @@ _PASSWORD_NAME = re.compile(
     r"password|passwd|pass phrase|current password", re.IGNORECASE
 )
 
+#: Hostname / path signals that identify a cookie-consent, legal or privacy
+#: wall iframe.  Such frames are never the login form, so they are excluded
+#: from login-field detection to avoid typing credentials into an unintended
+#: (possibly cross-origin) frame.
+_CONSENT_FRAME_PATTERN = re.compile(
+    r"cookie|consent|legal|privacy|policy|cmp|trustarc|onetrust|didomi|"
+    r"usercentrics|cookielaw",
+    re.IGNORECASE,
+)
+
 
 def _validate_url(url: str) -> str:
     scheme = urlparse(url).scheme.lower()
@@ -102,6 +113,48 @@ def _validate_url(url: str) -> str:
             f"scheme {scheme!r} is not allowed (allowed: {sorted(_ALLOWED_SCHEMES)})"
         )
     return url
+
+
+def _is_auth_frame(frame: Any, main_url: str) -> bool:
+    """Whether a child frame is safe to bind into for login-field detection.
+
+    A frame is eligible only when it is same-origin with the top-level page
+    and is not an obvious cookie-consent / legal / privacy wall.  Cross-origin
+    frames (e.g. ``fr.linkedin.com/legal/cookie-policy`` nested under the main
+    LinkedIn page) and consent-management iframes are excluded so credentials
+    are never typed into an unintended frame.
+    """
+    url = frame.url or ""
+    if not url or url == "about:blank":
+        return False
+    parsed = urlparse(url)
+    main = urlparse(main_url)
+    same_origin = (
+        (parsed.scheme or "").lower() == (main.scheme or "").lower()
+        and (parsed.hostname or "").lower() == (main.hostname or "").lower()
+        and parsed.port == main.port
+    )
+    if not same_origin:
+        return False
+    return not (
+        _CONSENT_FRAME_PATTERN.search(parsed.hostname or "")
+        or _CONSENT_FRAME_PATTERN.search(parsed.path)
+    )
+
+
+def _login_frames(page: Page) -> list[Any]:
+    """Frames searched for login fields, top-level frame first.
+
+    The main frame always leads; child frames are consulted only when they are
+    same-origin auth content (consent/cookie/legal walls and cross-origin
+    frames are excluded).
+    """
+    main = page.main_frame
+    frames = [main]
+    frames.extend(
+        frame for frame in page.frames[1:] if _is_auth_frame(frame, main.url or "")
+    )
+    return frames
 
 
 def _target_locator(
@@ -218,49 +271,51 @@ async def _fill_login_field(
         ) from exc
 
 
-def _username_candidates(page: Page, client_selector: str) -> list[Locator]:
+def _username_candidates(scope: Any, client_selector: str) -> list[Locator]:
     """Prioritized candidate locators for the username / email input.
 
     Order: the caller-supplied CSS selector, the classic LinkedIn member-login
     and guest sign-in ids, ``type=email``, then structural attributes
     (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
     matching — so detection does not rely on hard-coded CSS ids alone.
+    ``scope`` is the frame (top-level or child) being searched.
     """
     aria_role = cast(Any, "textbox")
     return [
-        page.locator(client_selector),
-        page.locator("#username"),
-        page.locator("#session_key"),
-        page.locator("#email"),
-        page.locator("#login"),
-        page.locator("input[type='email']"),
-        page.locator("input[autocomplete='username']"),
-        page.locator("input[autocomplete='email']"),
-        page.locator("input[name*='user' i]"),
-        page.locator("input[name*='mail' i]"),
-        page.locator("input[name*='login' i]"),
-        page.get_by_role(aria_role, name=_USERNAME_NAME),
+        scope.locator(client_selector),
+        scope.locator("#username"),
+        scope.locator("#session_key"),
+        scope.locator("#email"),
+        scope.locator("#login"),
+        scope.locator("input[type='email']"),
+        scope.locator("input[autocomplete='username']"),
+        scope.locator("input[autocomplete='email']"),
+        scope.locator("input[name*='user' i]"),
+        scope.locator("input[name*='mail' i]"),
+        scope.locator("input[name*='login' i]"),
+        scope.get_by_role(aria_role, name=_USERNAME_NAME),
     ]
 
 
-def _password_candidates(page: Page, client_selector: str) -> list[Locator]:
+def _password_candidates(scope: Any, client_selector: str) -> list[Locator]:
     """Prioritized candidate locators for the password input.
 
     Order: the caller-supplied CSS selector, the classic LinkedIn member-login
     and guest sign-in ids, ``type=password``, then structural attributes
     (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
     matching — so detection does not rely on hard-coded CSS ids alone.
+    ``scope`` is the frame (top-level or child) being searched.
     """
     aria_role = cast(Any, "textbox")
     return [
-        page.locator(client_selector),
-        page.locator("#password"),
-        page.locator("#session_password"),
-        page.locator("#passwd"),
-        page.locator("input[type='password']"),
-        page.locator("input[autocomplete='current-password']"),
-        page.locator("input[name*='pass' i]"),
-        page.get_by_role(aria_role, name=_PASSWORD_NAME),
+        scope.locator(client_selector),
+        scope.locator("#password"),
+        scope.locator("#session_password"),
+        scope.locator("#passwd"),
+        scope.locator("input[type='password']"),
+        scope.locator("input[autocomplete='current-password']"),
+        scope.locator("input[name*='pass' i]"),
+        scope.get_by_role(aria_role, name=_PASSWORD_NAME),
     ]
 
 
@@ -290,6 +345,37 @@ async def _fill_first_existing(
     )
 
 
+async def _fill_across_frames(
+    page: Page,
+    candidates: Callable[[Any], list[Locator]],
+    value: str,
+    *,
+    field_label: str,
+    timeout_ms: int,
+) -> None:
+    """Fill a login field, scoping detection to the top-level frame.
+
+    The main frame is always searched first.  A child frame is consulted only
+    when the main frame holds no candidate login field AND the child frame is
+    same-origin auth content (consent/cookie/legal walls and cross-origin
+    frames are excluded via :func:`_login_frames`).  This keeps credentials
+    bound to the visible top-level login form and never typed into an
+    unintended cookie-policy iframe.  Raises :class:`LoginFieldNotFoundError`
+    (clean 4xx) when no eligible frame contains the field.
+    """
+    first_desc: str | None = None
+    for frame in _login_frames(page):
+        for candidate in candidates(frame):
+            if first_desc is None:
+                first_desc = str(candidate)
+            if await candidate.count():
+                await _fill_login_field(frame, candidate, value, timeout_ms=timeout_ms)
+                return
+    raise LoginFieldNotFoundError(
+        f"login {field_label} field {first_desc or ''} not found on current page"
+    )
+
+
 async def fill_credentials(
     page: Page,
     request: FillCredentialsRequest,
@@ -307,7 +393,10 @@ async def fill_credentials(
     selector first, then known login ids, input types, name/autocomplete
     attributes and ARIA role + accessible-name matching — rather than a single
     hard-coded id, so classic member-login, guest sign-in and locale variants
-    all bind when their fields are present.  Before filling, common
+    all bind when their fields are present.  Detection is scoped to the
+    top-level frame by default: nested cookie-consent / legal iframes are
+    excluded, and a same-origin child frame is only consulted when the main
+    frame holds no candidate login field.  Before filling, common
     cookie-consent / interstitial walls are dismissed best-effort so the login
     form renders.  Each candidate is located within a short, bounded
     ``timeout_ms`` (not the 30s global default); a still-absent field raises
@@ -315,16 +404,16 @@ async def fill_credentials(
     """
     credential = await vault.get_credential(request.entry)
     await _dismiss_consent_walls(page)
-    await _fill_first_existing(
+    await _fill_across_frames(
         page,
-        _username_candidates(page, request.username_selector),
+        lambda scope: _username_candidates(scope, request.username_selector),
         credential.username,
         field_label="username",
         timeout_ms=timeout_ms,
     )
-    await _fill_first_existing(
+    await _fill_across_frames(
         page,
-        _password_candidates(page, request.password_selector),
+        lambda scope: _password_candidates(scope, request.password_selector),
         credential.password,
         field_label="password",
         timeout_ms=timeout_ms,
