@@ -486,7 +486,13 @@ async def _fill_first_existing(
     first_selector = candidates[0]
     for candidate in candidates:
         if await candidate.count():
-            await _fill_login_field(page, candidate, value, timeout_ms=timeout_ms)
+            # A candidate can resolve to several DOM elements (e.g. LinkedIn's
+            # login page renders two ``input[type='email']`` / guest sign-in
+            # fields); fill the first match or Playwright raises a strict-mode
+            # violation on the multi-element locator.
+            await _fill_login_field(
+                page, candidate.first, value, timeout_ms=timeout_ms
+            )
             return
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_selector} not found on current page"
@@ -517,7 +523,9 @@ async def _fill_across_frames(
             if first_desc is None:
                 first_desc = str(candidate)
             if await candidate.count():
-                await _fill_login_field(frame, candidate, value, timeout_ms=timeout_ms)
+                await _fill_login_field(
+                    frame, candidate.first, value, timeout_ms=timeout_ms
+                )
                 return
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_desc or ''} not found on current page"

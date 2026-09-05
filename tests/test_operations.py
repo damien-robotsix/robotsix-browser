@@ -217,6 +217,10 @@ class _DetectionFakeLocator:
         self._present = present
         self.seen_timeout: int | None = None
 
+    @property
+    def first(self) -> _DetectionFakeLocator:
+        return self
+
     async def count(self) -> int:
         return 1 if self._present else 0
 
