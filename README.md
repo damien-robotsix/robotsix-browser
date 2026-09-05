@@ -110,12 +110,12 @@ browser context (its own cookies / storage).
 | `DELETE /sessions/{id}`           | Close a session.                                   |
 | `POST /sessions/{id}/navigate`    | Navigate to a URL (`http`/`https`/`data`/`about`). |
 | `GET /sessions/{id}/state`        | ARIA accessibility tree + full-page screenshot.    |
-| `POST /sessions/{id}/click`       | Click by ARIA role (+ name) or CSS selector.       |
+| `POST /sessions/{id}/click`       | Click by ARIA role (+ name) or CSS selector. Returns a clean `404` if nothing matches. |
 | `POST /sessions/{id}/type`        | Fill a text field.                                 |
 | `POST /sessions/{id}/select`      | Choose a `<select>` option (by value or label).    |
 | `POST /sessions/{id}/upload`      | Attach a **file-hub file id** to a file input.     |
 | `POST /sessions/{id}/wait`        | Wait for a selector and/or load state.             |
-| `GET /sessions/{id}/value`        | Read back a field's current value. Returns `404` if selector matches no element. |
+| `GET /sessions/{id}/value`        | Read back a field's current value. Returns a clean `404` if the selector matches no element. |
 | `POST /sessions/{id}/fill-credentials` | Inject a **scoped Vaultwarden entry** (never echoed). |
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
 | `GET /vault/collections`           | Read-only: collection ids/names the vault key can see. |
@@ -124,6 +124,35 @@ browser context (its own cookies / storage).
 The machine-readable skill document (endpoints, request/response shapes, and
 the confirmation-gated safety contract) is served at `GET /chat-skill` for a
 chat agent to discover the API surface.
+
+#### Selector misses return a clean `404`
+
+`GET /value` and `POST /click` never raise an unhandled `500` / stack trace
+when their selector (or role + name) matches no element.  Both return a clean,
+structured HTTP `404` whose body names the target that was not found:
+
+```jsonc
+GET /sessions/{id}/value?selector=#does-not-exist
+// → 404
+{
+  "detail": "selector '#does-not-exist' matched no element"
+}
+```
+
+```jsonc
+POST /sessions/{id}/click
+{
+  "selector": "#does-not-exist"
+}
+// → 404
+{
+  "detail": "selector '#does-not-exist' matched no element"
+}
+```
+
+A role+name click miss produces the same shape using the accessible-target
+description, e.g. `"role 'button' with name 'Sign in' matched no element"`.
+The miss is detected within a bounded timeout, so the `404` arrives promptly.
 
 ### Access & authentication
 
