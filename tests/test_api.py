@@ -465,7 +465,7 @@ def test_fill_credentials_upstream_failure_surfaces_safe_reason(
 
     class _FakeManager:
         def get(self, session_id: str) -> SimpleNamespace:
-            return SimpleNamespace(page=object())
+            return SimpleNamespace(page=object(), last_navigation_url=None)
 
     client.app.dependency_overrides[get_manager] = _FakeManager
     client.app.dependency_overrides[get_vault] = _FailingVault

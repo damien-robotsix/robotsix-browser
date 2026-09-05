@@ -268,6 +268,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             url = await operations.navigate(session.page, request)
         except UnsupportedUrlError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # Remember the *intended* target so fill-credentials can re-navigate to
+        # it after establishing consent on a LinkedIn cookie-policy redirect.
+        session.last_navigation_url = request.url
         return ActionResponse(url=url)
 
     @app.get("/sessions/{session_id}/state", response_model=StateResponse)
@@ -370,6 +373,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 session.page,
                 request,
                 vault,
+                login_url=session.last_navigation_url,
                 timeout_ms=settings.credential_fill_timeout_ms,
             )
         except LoginFieldNotFoundError as exc:

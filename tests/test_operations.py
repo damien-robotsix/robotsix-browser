@@ -8,21 +8,25 @@ from typing import Any
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from robotsix_browser.models import ClickRequest
+from robotsix_browser.models import ClickRequest, FillCredentialsRequest
 from robotsix_browser.operations import (
     _CLICK_TIMEOUT_MS,
     _READ_VALUE_TIMEOUT_MS,
     LoginFieldNotFoundError,
     SelectorNotFoundError,
     UnsupportedUrlError,
+    _dismiss_consent_walls,
     _fill_across_frames,
     _fill_first_existing,
     _is_auth_frame,
+    _is_consent_redirect,
     _login_frames,
     _password_candidates,
+    _recover_consent_redirect,
     _username_candidates,
     _validate_url,
     click,
+    fill_credentials,
     read_value,
 )
 
@@ -475,3 +479,188 @@ def test_login_frames_orders_main_first_and_filters_children() -> None:
     assert frames[0] is main
     assert auth in frames
     assert cookie not in frames
+
+
+class _ConsentFakeContext:
+    """Minimal fake BrowserContext recording cookies set via ``add_cookies``."""
+
+    def __init__(self) -> None:
+        self.added: list[dict[str, object]] = []
+
+    async def add_cookies(self, cookies: list[dict[str, object]]) -> None:
+        self.added.extend(cookies)
+
+
+class _ConsentRecoveryFakePage:
+    """Fake page for fill-credentials consent recovery: main frame + context.
+
+    ``goto`` re-navigates the main frame (e.g. to the ``login_url``).  Whether
+    login fields are present after navigation is controlled by
+    ``fields_after_navigation``.  ``get_by_role`` returns an empty locator so
+    best-effort consent-wall dismissal finds nothing to click.
+    """
+
+    def __init__(
+        self,
+        *,
+        start_url: str,
+        fields_after_navigation: bool = True,
+    ) -> None:
+        self.context = _ConsentFakeContext()
+        self.filled: list[tuple[str, str, str]] = []
+        self.navigations: list[tuple[str, str | None]] = []
+        self._fields_after_navigation = fields_after_navigation
+        self.main_frame = self._make_frame(start_url)
+        self.frames = [self.main_frame]
+
+    def _make_frame(self, url: str) -> _FakeFrame:
+        present = {"#email", "#password"} if self._fields_after_navigation else set()
+        return _FakeFrame(url, present=present, fill_log=self.filled)
+
+    @property
+    def url(self) -> str:
+        return self.main_frame.url
+
+    async def goto(self, url: str, wait_until: str | None = None) -> None:
+        self.navigations.append((url, wait_until))
+        self.main_frame = self._make_frame(url)
+        self.frames = [self.main_frame]
+
+    def get_by_role(self, role: Any, name: Any = None) -> _FakeFrameLocator:
+        # Empty locator → _dismiss_consent_walls finds no button and returns.
+        return _FakeFrameLocator(self.main_frame, "get_by_role-empty", False)
+
+
+class _FakeCredential:
+    username = "alice@example.com"
+    password = "s3cr3t"
+
+
+class _FakeVault:
+    async def get_credential(self, entry: str) -> _FakeCredential:
+        return _FakeCredential()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://fr.linkedin.com/legal/cookie-policy",
+        "https://www.linkedin.com/legal/cookie-policy?lang=en",
+        "https://example.com/cookie-policy",
+        "https://example.com/consent",
+    ],
+)
+def test_is_consent_redirect_detects_wall_urls(url: str) -> None:
+    assert _is_consent_redirect(url) is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.linkedin.com/login",
+        "https://www.linkedin.com/feed",
+        "https://example.com/legal/terms",
+        "",
+    ],
+)
+def test_is_consent_redirect_rejects_login_and_unrelated(url: str) -> None:
+    assert _is_consent_redirect(url) is False
+
+
+async def test_recover_consent_redirect_establishes_consent_and_renavigates() -> None:
+    page = _ConsentRecoveryFakePage(
+        start_url="https://fr.linkedin.com/legal/cookie-policy"
+    )
+    await _recover_consent_redirect(page, login_url="https://www.linkedin.com/login")
+    # Consent cookies were set at the context level (survive re-navigation).
+    assert page.context.added
+    assert {"li_gc"} <= {c["name"] for c in page.context.added}
+    # Re-navigated to the intended login URL.
+    assert page.navigations == [("https://www.linkedin.com/login", "load")]
+    assert page.url == "https://www.linkedin.com/login"
+
+
+async def test_recover_consent_redirect_noop_when_not_on_wall() -> None:
+    page = _ConsentRecoveryFakePage(start_url="https://www.linkedin.com/login")
+    await _recover_consent_redirect(page, login_url="https://www.linkedin.com/login")
+    assert page.context.added == []
+    assert page.navigations == []
+
+
+async def test_dismiss_consent_walls_skips_full_page_consent_redirect() -> None:
+    """The accept-click never lands on the top-level consent-redirect page."""
+    page = _ConsentRecoveryFakePage(
+        start_url="https://fr.linkedin.com/legal/cookie-policy"
+    )
+    await _dismiss_consent_walls(page)
+    # Gated before any click: no navigation, nothing filled.
+    assert page.navigations == []
+    assert page.filled == []
+
+
+def _fill_request() -> FillCredentialsRequest:
+    return FillCredentialsRequest(
+        entry="linkedin.com", username_selector="#user", password_selector="#pass"
+    )
+
+
+async def test_fill_credentials_recovers_from_consent_redirect() -> None:
+    """(a) A login page that consent-redirects is recovered: consent is
+    established and the page re-navigated to the real login form, which is then
+    bound in the top-level frame."""
+    page = _ConsentRecoveryFakePage(
+        start_url="https://fr.linkedin.com/legal/cookie-policy",
+        fields_after_navigation=True,
+    )
+    url = await fill_credentials(
+        page, _fill_request(), _FakeVault(), login_url="https://www.linkedin.com/login"
+    )
+    # Consent established and re-navigation happened before filling.
+    assert page.context.added
+    assert ("https://www.linkedin.com/login", "load") in page.navigations
+    assert url == "https://www.linkedin.com/login"
+    # Bound to the top-level login frame (never a child frame).
+    assert (
+        "https://www.linkedin.com/login",
+        "#email",
+        "alice@example.com",
+    ) in page.filled
+    assert (
+        "https://www.linkedin.com/login",
+        "#password",
+        "s3cr3t",
+    ) in page.filled
+
+
+async def test_fill_credentials_consent_already_set_no_redirect() -> None:
+    """(b) A login page with consent already established is filled directly:
+    no re-navigation, no consent re-set."""
+    page = _ConsentRecoveryFakePage(
+        start_url="https://www.linkedin.com/login", fields_after_navigation=True
+    )
+    url = await fill_credentials(
+        page, _fill_request(), _FakeVault(), login_url="https://www.linkedin.com/login"
+    )
+    assert page.context.added == []
+    assert page.navigations == []
+    assert url == "https://www.linkedin.com/login"
+    assert (
+        "https://www.linkedin.com/login",
+        "#email",
+        "alice@example.com",
+    ) in page.filled
+
+
+async def test_fill_credentials_genuine_miss_still_clean_fails() -> None:
+    """(c) A genuine missing-form miss (not a consent redirect) still fails
+    cleanly with LoginFieldNotFoundError → mapped to a 4xx, never a 500."""
+    page = _ConsentRecoveryFakePage(
+        start_url="https://example.com/login", fields_after_navigation=False
+    )
+    with pytest.raises(LoginFieldNotFoundError) as excinfo:
+        await fill_credentials(
+            page, _fill_request(), _FakeVault(), login_url="https://example.com/login"
+        )
+    message = str(excinfo.value)
+    assert "username" in message
+    assert "not found" in message
