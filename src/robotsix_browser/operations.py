@@ -109,13 +109,15 @@ _CONSENT_FRAME_PATTERN = re.compile(
 #: URL path signals for a *full-page* consent redirect: the top-level page was
 #: hard-redirected away from a login to a cookie-policy / consent wall.  This
 #: is distinct from :data:`_CONSENT_FRAME_PATTERN`, which flags consent
-#: *iframes* nested under the main page.  It targets the LinkedIn
-#: ``/legal/cookie-policy`` whole-page redirect (and equivalents such as
-#: ``/cookie-policy`` / ``/consent``) so fill-credentials can recover before
-#: attempting to bind the (now absent) login form.
+#: *iframes* nested under the main page.  It targets the LinkedIn whole-page
+#: legal redirects — live-validated against the real wall, a fresh US/guest
+#: session hard-redirects to ``/legal/user-agreement`` while the EU one goes to
+#: ``/legal/cookie-policy`` — plus equivalents such as ``/cookie-policy`` /
+#: ``/consent``, so fill-credentials can recover before attempting to bind the
+#: (now absent) login form.
 _CONSENT_REDIRECT_PATTERN = re.compile(
-    r"/legal/cookie(?:-|_)policy(?=[/?#]|$)|/cookie(?:-|_)policy(?=[/?#]|$)|"
-    r"/consent(?=[/?#]|$)",
+    r"/legal/(?:cookie(?:-|_)policy|user(?:-|_)agreement)(?=[/?#]|$)|"
+    r"/cookie(?:-|_)policy(?=[/?#]|$)|/consent(?=[/?#]|$)",
     re.IGNORECASE,
 )
 
@@ -175,10 +177,11 @@ _LINKEDIN_CONSENT_COOKIES: tuple[SetCookieParam, ...] = (
 def _is_consent_redirect(url: str) -> bool:
     """Whether ``url`` is a full-page consent / cookie-policy redirect target.
 
-    LinkedIn hard-redirects the whole page to
-    ``fr.linkedin.com/legal/cookie-policy`` when the session carries no consent
-    cookie; detecting this (after navigation, before credential fill) lets
-    fill-credentials establish consent and re-navigate to the login form
+    LinkedIn hard-redirects the whole page to a legal wall — a fresh US/guest
+    session to ``www.linkedin.com/legal/user-agreement``, the EU one to
+    ``fr.linkedin.com/legal/cookie-policy`` — when the session carries no
+    consent cookie; detecting this (after navigation, before credential fill)
+    lets fill-credentials establish consent and re-navigate to the login form
     instead of clean-failing against the wrong page.
     """
     return bool(_CONSENT_REDIRECT_PATTERN.search(url or ""))

@@ -546,6 +546,8 @@ class _FakeVault:
     [
         "https://fr.linkedin.com/legal/cookie-policy",
         "https://www.linkedin.com/legal/cookie-policy?lang=en",
+        "https://www.linkedin.com/legal/user-agreement",
+        "https://www.linkedin.com/legal/user-agreement?lipi=urn%3Ali%3Apage%3Ad_flagship3_login",
         "https://example.com/cookie-policy",
         "https://example.com/consent",
     ],
