@@ -302,11 +302,13 @@ class _FakeFrame:
         present: set[str] | None = None,
         aria_names: set[str] | None = None,
         fill_log: list[tuple[str, str, str]] | None = None,
+        click_log: list[tuple[str, str]] | None = None,
     ) -> None:
         self.url = url
         self._present = set() if present is None else present
         self._aria_names = set() if aria_names is None else aria_names
         self.fill_log = [] if fill_log is None else fill_log
+        self.click_log = [] if click_log is None else click_log
 
     def locator(self, selector: str) -> _FakeFrameLocator:
         return _FakeFrameLocator(self, selector, selector in self._present)
@@ -329,11 +331,18 @@ class _FakeFrameLocator:
         self._selector = selector
         self._present = present
 
+    @property
+    def first(self) -> _FakeFrameLocator:
+        return self
+
     async def count(self) -> int:
         return 1 if self._present else 0
 
     async def fill(self, value: str, *, timeout: int | None = None) -> None:
         self._frame.fill_log.append((self._frame.url, self._selector, value))
+
+    async def click(self, *, timeout: int | None = None) -> None:
+        self._frame.click_log.append((self._frame.url, self._selector))
 
 
 class _FramesFakePage:
@@ -497,7 +506,9 @@ class _ConsentRecoveryFakePage:
     ``goto`` re-navigates the main frame (e.g. to the ``login_url``).  Whether
     login fields are present after navigation is controlled by
     ``fields_after_navigation``.  ``get_by_role`` returns an empty locator so
-    best-effort consent-wall dismissal finds nothing to click.
+    best-effort consent-wall dismissal finds nothing to click — unless
+    ``wall_accept`` is set, in which case a present ``button`` locator is
+    returned so the recovery's accept-click is recorded on ``clicks``.
     """
 
     def __init__(
@@ -505,17 +516,22 @@ class _ConsentRecoveryFakePage:
         *,
         start_url: str,
         fields_after_navigation: bool = True,
+        wall_accept: bool = False,
     ) -> None:
         self.context = _ConsentFakeContext()
         self.filled: list[tuple[str, str, str]] = []
+        self.clicks: list[tuple[str, str]] = []
         self.navigations: list[tuple[str, str | None]] = []
         self._fields_after_navigation = fields_after_navigation
+        self._wall_accept = wall_accept
         self.main_frame = self._make_frame(start_url)
         self.frames = [self.main_frame]
 
     def _make_frame(self, url: str) -> _FakeFrame:
         present = {"#email", "#password"} if self._fields_after_navigation else set()
-        return _FakeFrame(url, present=present, fill_log=self.filled)
+        return _FakeFrame(
+            url, present=present, fill_log=self.filled, click_log=self.clicks
+        )
 
     @property
     def url(self) -> str:
@@ -527,6 +543,11 @@ class _ConsentRecoveryFakePage:
         self.frames = [self.main_frame]
 
     def get_by_role(self, role: Any, name: Any = None) -> _FakeFrameLocator:
+        # Present accept button on the wall when wall_accept is enabled.
+        if self._wall_accept and role == "button":
+            return _FakeFrameLocator(
+                self.main_frame, f"get_by_role({role}, accept)", True
+            )
         # Empty locator → _dismiss_consent_walls finds no button and returns.
         return _FakeFrameLocator(self.main_frame, "get_by_role-empty", False)
 
@@ -580,6 +601,30 @@ async def test_recover_consent_redirect_establishes_consent_and_renavigates() ->
     # Re-navigated to the intended login URL.
     assert page.navigations == [("https://www.linkedin.com/login", "load")]
     assert page.url == "https://www.linkedin.com/login"
+
+
+async def test_recover_consent_redirect_accepts_user_agreement_wall() -> None:
+    """The US user-agreement wall is cleared via its own accept action.
+
+    Fabricated consent cookies alone cannot clear LinkedIn's
+    ``/legal/user-agreement`` guest gate; the recovery must also click the
+    wall's accept / "agree and continue" button so LinkedIn records genuine
+    acceptance before re-navigating to the login form.
+    """
+    page = _ConsentRecoveryFakePage(
+        start_url=(
+            "https://www.linkedin.com/legal/user-agreement"
+            "?lipi=urn%3Ali%3Apage%3Ad_flagship3_login"
+        ),
+        wall_accept=True,
+    )
+    await _recover_consent_redirect(page, login_url="https://www.linkedin.com/login")
+    # Consent cookies are still established at the context level…
+    assert {"li_gc"} <= {c["name"] for c in page.context.added}
+    # …AND the wall's accept button was clicked (the genuine-acceptance step).
+    assert any("button" in sel for _url, sel in page.clicks)
+    # Re-navigated to the intended login URL.
+    assert page.navigations == [("https://www.linkedin.com/login", "load")]
 
 
 async def test_recover_consent_redirect_noop_when_not_on_wall() -> None:
