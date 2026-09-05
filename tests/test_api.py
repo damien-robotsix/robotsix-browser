@@ -187,6 +187,40 @@ def test_click_missing_role_name_returns_404(
     assert elapsed < _MISS_RESPONSE_MAX_S
 
 
+def test_click_missing_role_name_bounded_no_traceback(
+    browser_available: None, client: TestClient
+) -> None:
+    """A role+name click miss is a clean 404 that returns within the bounded
+    click timeout.
+
+    Dedicated coverage for the ARIA role+name miss path, a variant of the
+    selector-miss handling: the response names the role/name and the no-match
+    reason, leaks no stack trace or internal error text, and the handler fails
+    fast via the bounded click timeout (~5s, same style as the fill-credentials
+    fix) instead of blocking on the 30s global Playwright action default.
+    """
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})
+
+    start = time.monotonic()
+    response = client.post(
+        f"/sessions/{session_id}/click",
+        json={"role": "button", "name": "no-such-button"},
+    )
+    elapsed = time.monotonic() - start
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "role 'button' with name 'no-such-button'" in detail
+    assert "matched no element" in detail
+    # No stack trace or internal error text may leak into the response.
+    for forbidden in ("Traceback", "TimeoutError", 'File "'):
+        assert forbidden not in response.text
+    # The miss is served within the bounded click timeout (~5s), never the
+    # 30s global Playwright default; 15s leaves generous CI headroom.
+    assert elapsed < 15.0
+
+
 def test_click_happy_path(browser_available: None, client: TestClient) -> None:
     session_id = client.post("/sessions", json={}).json()["session_id"]
     client.post(f"/sessions/{session_id}/navigate", json={"url": _data_url(_FORM_HTML)})

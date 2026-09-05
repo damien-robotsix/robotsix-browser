@@ -69,9 +69,11 @@ class _FakeLocator:
     def __init__(self, *, missing: bool = False) -> None:
         self._missing = missing
         self.seen_timeout: float | None = None
+        self.click_timeout: float | None = None
 
     async def click(self, timeout: float | None = None) -> None:
         self.seen_timeout = timeout
+        self.click_timeout = timeout
         if self._missing:
             raise PlaywrightTimeoutError("Timeout exceeded")
 
@@ -95,13 +97,16 @@ class _MissingTargetPage:
     def __init__(self) -> None:
         self.locator_seen: _FakeLocator | None = None
         self.role_locator_seen: _FakeLocator | None = None
+        self.last_locator: _FakeLocator | None = None
 
     def locator(self, selector: str) -> _FakeLocator:
         self.locator_seen = _FakeLocator(missing=True)
+        self.last_locator = self.locator_seen
         return self.locator_seen
 
     def get_by_role(self, role: Any, name: str | None = None) -> _FakeLocator:
         self.role_locator_seen = _FakeLocator(missing=True)
+        self.last_locator = self.role_locator_seen
         return self.role_locator_seen
 
 
@@ -143,6 +148,10 @@ async def test_click_missing_role_name_raises_clean_error() -> None:
     # The role+name miss is likewise probed within the bounded click timeout.
     assert page.role_locator_seen is not None
     assert page.role_locator_seen.seen_timeout == _CLICK_TIMEOUT_MS
+    # The miss fails fast via the bounded click timeout (same style as the
+    # fill-credentials fix) rather than the 30s global Playwright default.
+    assert page.last_locator is not None
+    assert page.last_locator.click_timeout == _CLICK_TIMEOUT_MS
 
 
 async def test_click_selector_on_present_target_returns_url() -> None:
