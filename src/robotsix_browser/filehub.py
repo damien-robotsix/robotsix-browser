@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 
 import httpx
+from robotsix_http import ExternalHTTPError, RetryClient
 
 #: File ids are opaque tokens; restrict to a safe charset so the value can
 #: never introduce path traversal or a scheme change when placed in the URL.
@@ -59,12 +60,17 @@ class FileHubClient:
         url = self._build_url(file_id)
         client = self._client or httpx.AsyncClient()
         owns_client = self._client is None
+        # Route the download through the fleet-standard RetryClient so
+        # transient network errors / 5xx responses are retried with backoff.
+        # ``get`` performs ``raise_for_status`` internally and maps
+        # 401/403/429/5xx to ``ExternalHTTPError``; other 4xx surface as the
+        # raw ``httpx.HTTPStatusError`` (an ``httpx.HTTPError``).
+        retry_client = RetryClient(client)
         try:
-            response = await client.get(url)
-            response.raise_for_status()
+            response = await retry_client.get(str(url))
             content = response.content
             headers = response.headers
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ExternalHTTPError) as exc:
             raise FileHubError(
                 f"file-hub request failed for {file_id!r}: {exc}"
             ) from exc
