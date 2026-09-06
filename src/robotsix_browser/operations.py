@@ -490,9 +490,7 @@ async def _fill_first_existing(
             # login page renders two ``input[type='email']`` / guest sign-in
             # fields); fill the first match or Playwright raises a strict-mode
             # violation on the multi-element locator.
-            await _fill_login_field(
-                page, candidate.first, value, timeout_ms=timeout_ms
-            )
+            await _fill_login_field(page, candidate.first, value, timeout_ms=timeout_ms)
             return
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_selector} not found on current page"
