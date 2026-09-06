@@ -13,6 +13,22 @@ from robotsix_browser.filehub import FileHubFile
 from robotsix_browser.vault import EntryOutOfScopeError, VaultCredential
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_backoff_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``RetryClient`` backoff sleeps instant so the suite stays fast.
+
+    The file-hub and Vaultwarden calls now go through
+    ``robotsix_http.RetryClient``, which sleeps between retries on transient
+    failures. Tests that drive 5xx / network failures would otherwise wait out
+    real exponential backoff; patch the sleep to a no-op.
+    """
+
+    async def _instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("robotsix_http.client.asyncio.sleep", _instant)
+
+
 @pytest.fixture(scope="session")
 def browser_available() -> None:
     """Skip the test unless a headless Chromium can actually be launched."""

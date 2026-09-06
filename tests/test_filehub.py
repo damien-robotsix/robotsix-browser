@@ -62,3 +62,42 @@ async def test_http_error_wrapped() -> None:
         client = FileHubClient("http://hub.test", client=http_client)
         with pytest.raises(FileHubError):
             await client.fetch("missing")
+
+
+async def test_transient_5xx_is_retried_then_succeeds() -> None:
+    """A transient 5xx is retried through RetryClient and eventually succeeds."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            return httpx.Response(503)
+        return httpx.Response(200, content=b"payload")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = FileHubClient("http://hub.test", client=http_client)
+        result = await client.fetch("abc123")
+
+    assert calls == 3
+    assert result.content == b"payload"
+
+
+async def test_persistent_5xx_wrapped_after_retries() -> None:
+    """A persistent 5xx exhausts retries and is wrapped as FileHubError."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = FileHubClient("http://hub.test", client=http_client)
+        with pytest.raises(FileHubError):
+            await client.fetch("flaky")
+
+    # 1 initial attempt + the RetryClient default of 4 retries.
+    assert calls == 5

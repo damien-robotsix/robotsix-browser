@@ -181,6 +181,25 @@ The `submit` endpoint is deliberately kept separate from `click`. It is the
 
 Never wire an automatic call to `/submit` after filling a form.
 
+## Resilience & retry behavior
+
+Outbound HTTP calls to fleet dependencies (file-hub and Vaultwarden) are
+routed through the `robotsix-http` `RetryClient`, which implements automatic
+retry with exponential backoff for transient failures:
+
+- **Retried responses**: Transient network errors and server-side 5xx errors
+  (500–599) are retried up to 4 times with exponential backoff.
+- **Not retried**: 4xx client errors are not retried, except for rate-limit
+  responses (429) which are retried.
+- **Timeout semantics**: The configured `default_timeout_ms` applies to the
+  entire retry sequence, not individual attempts.
+- **Affected endpoints**: `POST /sessions/{id}/upload` (file-hub), and
+  `POST /sessions/{id}/fill-credentials` (Vaultwarden prelogin, sync, and
+  token exchange).
+
+If all retries are exhausted, the original error is wrapped and returned to
+the caller (e.g., as `FileHubError` or `VaultUpstreamError`).
+
 ## Credential injection (Vaultwarden)
 
 `POST /sessions/{id}/fill-credentials` logs a session into a website **without
