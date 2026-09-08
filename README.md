@@ -278,3 +278,7 @@ uv run pytest
 
 The headless smoke tests are skipped automatically when no Chromium binary is
 installed; run `uv run playwright install chromium` to exercise them locally.
+
+Some validation cannot run in GitHub-hosted CI and requires a human on a
+network-enabled host (e.g. tuning the LinkedIn consent cookies). See
+[RUNBOOKS.md](RUNBOOKS.md) for the manual procedures.
