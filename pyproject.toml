@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "d29de204db62910f062456e5055fc2fe232e04a9" }
-robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "c57947232685f4e4798a61e2bc53d747d3dbc75d" }
+robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "8c5615dfa368e99718cfc63fa0c65313a0fb8489" }
+robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "df0bcaf52bd0c0063dccfbc667cdb4776ac8a39b" }
 
 [project.scripts]
 robotsix-browser = "robotsix_browser.__main__:main"
