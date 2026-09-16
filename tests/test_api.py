@@ -80,20 +80,21 @@ def test_unknown_session_returns_404(client: TestClient) -> None:
 
 
 def test_chat_skill_document(client: TestClient) -> None:
-    doc = client.get("/chat-skill").json()
-    assert doc["component"] == "robotsix-browser"
-    assert doc["base"]["port"] == 8000
+    response = client.get("/chat-skill")
+    # The chat-access standard mandates text/markdown with YAML frontmatter.
+    assert response.headers["content-type"].startswith("text/markdown")
+    doc = response.text
+    assert doc.startswith("---\n")
+    assert "name: robotsix-browser" in doc
     # Every state-mutating action is confirmation-gated; reads are not.
-    assert "submit" in doc["safety"]["confirmation_gated"]
-    read_only = set(doc["safety"]["read_only"])
-    assert {"state", "value"} <= read_only
+    assert "confirmation_gated" in doc
+    assert "read_only" in doc
+    assert "/sessions/{id}/submit" in doc
     # The read-only vault diagnostics are advertised and expose no secrets.
-    assert "vault_diagnostics.items" in read_only
-    assert doc["vault_diagnostics"]["items"]["path"] == "/vault/items"
+    assert "/vault/items" in doc
     # The programmatic auth path is documented for the chat agent.
-    assert doc["auth"]["internal"]["network"] == "central-deploy-proxy"
-    bypass = doc["auth"]["public_edge"]["programmatic_bypass"]
-    assert bypass["header"].lower().startswith("authorization: bearer")
+    assert "central-deploy-proxy" in doc
+    assert "authorization: bearer" in doc.lower()
 
 
 def test_smoke_fill_and_read_back(browser_available: None, client: TestClient) -> None:

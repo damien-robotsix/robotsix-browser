@@ -122,8 +122,10 @@ browser context (its own cookies / storage).
 | `GET /vault/items`                 | Read-only: item ids/names the vault key can see (no secrets). |
 
 The machine-readable skill document (endpoints, request/response shapes, and
-the confirmation-gated safety contract) is served at `GET /chat-skill` for a
-chat agent to discover the API surface.
+the confirmation-gated safety contract) is served at `GET /chat-skill` as
+`text/markdown` with YAML frontmatter, per the chat-access standard. The
+frontmatter carries a kebab-case `name` and one-sentence `description`; the
+markdown body documents the HTTP API and safety rules.
 
 #### Selector misses return a clean `404`
 

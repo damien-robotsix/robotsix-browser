@@ -54,6 +54,11 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # FastAPI's dependency-injection markers are called in argument defaults by design.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
+[tool.ruff.lint.per-file-ignores]
+# The chat-skill module embeds a markdown document whose example request/
+# response lines are naturally longer than the code line limit.
+"src/robotsix_browser/chat_skill.py" = ["E501"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
