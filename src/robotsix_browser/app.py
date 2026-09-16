@@ -26,9 +26,9 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 
 from robotsix_browser import chat_skill, operations
 from robotsix_browser.config import Settings, get_settings
@@ -190,9 +190,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/chat-skill")
-    async def chat_skill_doc() -> dict[str, Any]:
-        return chat_skill.chat_skill()
+    @app.get("/chat-skill", response_class=PlainTextResponse)
+    async def chat_skill_doc() -> PlainTextResponse:
+        return PlainTextResponse(
+            chat_skill.chat_skill(),
+            media_type=chat_skill.CHAT_SKILL_MEDIA_TYPE,
+        )
 
     @app.get("/vault/collections", response_model=VaultCollectionsResponse)
     async def vault_collections(
