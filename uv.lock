@@ -620,7 +620,7 @@ requires-dist = [
     { name = "playwright", specifier = ">=1.48" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "robotsix-config", git = "https://github.com/damien-robotsix/robotsix-config?rev=d29de204db62910f062456e5055fc2fe232e04a9" },
-    { name = "robotsix-http", git = "https://github.com/damien-robotsix/robotsix-http.git?rev=c57947232685f4e4798a61e2bc53d747d3dbc75d" },
+    { name = "robotsix-http", git = "https://github.com/damien-robotsix/robotsix-http.git?rev=0dfb8eccd60942cdcb401d78f054e388a9c84a9b" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
 
@@ -646,7 +646,7 @@ dependencies = [
 [[package]]
 name = "robotsix-http"
 version = "0.3.3"
-source = { git = "https://github.com/damien-robotsix/robotsix-http.git?rev=c57947232685f4e4798a61e2bc53d747d3dbc75d#c57947232685f4e4798a61e2bc53d747d3dbc75d" }
+source = { git = "https://github.com/damien-robotsix/robotsix-http.git?rev=0dfb8eccd60942cdcb401d78f054e388a9c84a9b#0dfb8eccd60942cdcb401d78f054e388a9c84a9b" }
 dependencies = [
     { name = "httpx" },
 ]
