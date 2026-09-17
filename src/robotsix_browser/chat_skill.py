@@ -66,7 +66,8 @@ Health check: `GET /health` -> `{{"status": "ok"}}` (port 8000).
   - request: `{{"session_id": "str | null (reopen an existing session)"}}`
   - response: `{{"session_id": "str"}}`
 - **Close** — `DELETE /sessions/{{id}}`
-  - Close the session and its browser context.
+  - Close the session and its browser context, destroying all in-page state.
+    Always confirmation-gated.
   - response: `{{"status": "closed"}}`
 
 ## Actions
@@ -129,7 +130,8 @@ Every action that mutates the page is confirmation-gated: present the filled
 state to the operator and get explicit OK first.
 
 - **confirmation_gated** (ask the operator before performing): `navigate`,
-  `click`, `type`, `select`, `upload`, `wait`, `fill_credentials`, `submit`.
+  `click`, `type`, `select`, `upload`, `wait`, `fill_credentials`, `submit`,
+  `close`.
 - **read_only** (always allowed, never gated): `state` (`GET
   /sessions/{{id}}/state`), `value`, `vault_diagnostics.collections`,
   `vault_diagnostics.items`.
