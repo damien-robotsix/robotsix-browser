@@ -28,7 +28,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from robotsix_http.fastapi import create_chat_skill_router
 
 from robotsix_browser import chat_skill, operations
 from robotsix_browser.config import Settings, get_settings
@@ -190,12 +190,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/chat-skill", response_class=PlainTextResponse)
-    async def chat_skill_doc() -> PlainTextResponse:
-        return PlainTextResponse(
-            chat_skill.chat_skill(),
-            media_type=chat_skill.CHAT_SKILL_MEDIA_TYPE,
-        )
+    app.include_router(
+        create_chat_skill_router(chat_skill.chat_skill(), name="robotsix-browser")
+    )
 
     @app.get("/vault/collections", response_model=VaultCollectionsResponse)
     async def vault_collections(
