@@ -28,9 +28,6 @@ from robotsix_browser.models import LoadState, WaitUntil
 WAIT_UNTIL_VALUES = " | ".join(get_args(WaitUntil))
 LOAD_STATE_VALUES = " | ".join(get_args(LoadState))
 
-#: MIME type advertised for the skill document (chat-access standard).
-CHAT_SKILL_MEDIA_TYPE = "text/markdown"
-
 
 def chat_skill() -> str:
     """Return the chat-agent skill document as markdown with YAML frontmatter."""
