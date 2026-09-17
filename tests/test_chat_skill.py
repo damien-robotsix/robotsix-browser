@@ -57,6 +57,40 @@ def test_frontmatter_name_and_description() -> None:
     assert "\n" not in meta["description"]
 
 
+def _safety_list(body: str, label: str) -> set[str]:
+    """Return the backtick-quoted action names under the ``**<label>**`` bullet
+    of the Safety section."""
+    lines = body.split("## Safety", 1)[1].splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"- **{label}**"))
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("- **")),
+        len(lines),
+    )
+    return set(re.findall(r"`([a-z_][a-z_.]*)`", "\n".join(lines[start:end])))
+
+
+def _documented_actions(body: str) -> set[str]:
+    """Return the action names advertised as ``- **name**`` bullets in the body.
+
+    This is the action set the Safety classification must be exhaustive over.
+    Session ``open`` is lifecycle setup — it creates a session but does not
+    mutate a page — so it is not subject to the gate, and the vault-diagnostics
+    bullets are advertised by short name but classified under
+    ``vault_diagnostics.*``.
+    """
+    pre_safety = body.split("## Safety", 1)[0]
+    names = {
+        name.lower()
+        for name in re.findall(r"^\- \*\*([A-Za-z_]+)\*\*", pre_safety, re.MULTILINE)
+    }
+    names.discard("open")
+    names.discard("collections")
+    names.discard("items")
+    names.add("vault_diagnostics.collections")
+    names.add("vault_diagnostics.items")
+    return names
+
+
 def test_safety_section_preserves_classification() -> None:
     _, body = _split_frontmatter(chat_skill.chat_skill())
     assert "## Safety" in body
@@ -76,6 +110,7 @@ def test_safety_section_preserves_classification() -> None:
         "wait",
         "fill_credentials",
         "submit",
+        "close",
     ):
         assert action in gated_line or f"`{action}`" in body
     assert "read_only" in body
@@ -86,6 +121,14 @@ def test_safety_section_preserves_classification() -> None:
         "vault_diagnostics.items",
     ):
         assert read in body
+    # The classification is exhaustive over the documented action set: every
+    # documented mutating/read-only action is either confirmation-gated or
+    # read-only.  Fail on unclassified actions so a new mutating action cannot
+    # be added to the document without also being classified.
+    gated = _safety_list(body, "confirmation_gated")
+    read_only = _safety_list(body, "read_only")
+    unclassified = _documented_actions(body) - gated - read_only
+    assert not unclassified, f"unclassified actions: {sorted(unclassified)}"
 
 
 def test_enum_value_strings_match_models() -> None:
