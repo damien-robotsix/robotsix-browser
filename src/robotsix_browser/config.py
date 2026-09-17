@@ -27,7 +27,7 @@ class Settings(BaseModel):
     #: default and surfacing as a 500.
     credential_fill_timeout_ms: int = 5_000
 
-    # --- Vaultwarden / Bitwarden CLI credential injection -----------------
+    # --- Vaultwarden / Bitwarden JSON API credential injection -----------
     # All of the following are read from the single JSON config file.  Secrets
     # use pydantic SecretStr so they are masked in repr / logs.  When any
     # required value is blank the credential-fill endpoint responds 503 (not
