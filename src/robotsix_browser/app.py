@@ -23,17 +23,20 @@ HUMAN SUBMIT-GATE: no endpoint other than ``/submit`` submits a form, and
 
 from __future__ import annotations
 
-import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+import structlog
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from robotsix_http.fastapi import create_chat_skill_router
+from starlette_context.middleware import RawContextMiddleware
+from starlette_context.plugins import CorrelationIdPlugin, RequestIdPlugin
 
 from robotsix_browser import chat_skill, credential_fill, operations
 from robotsix_browser.config import Settings, get_settings
 from robotsix_browser.credential_fill import LoginFieldNotFoundError
 from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdError
+from robotsix_browser.logging_config import configure_logging
 from robotsix_browser.models import (
     ActionResponse,
     ClickRequest,
@@ -67,7 +70,7 @@ from robotsix_browser.vault import (
     VaultUpstreamError,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_manager(request: Request) -> SessionManager:
@@ -112,10 +115,10 @@ def _vault_http_error(exc: VaultError, operation: str) -> HTTPException:
         return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, VaultUpstreamError):
         logger.warning(
-            "%s failed (upstream HTTP %s): %s",
-            operation,
-            exc.status_code,
-            exc.reason,
+            "vault operation failed",
+            operation=operation,
+            upstream_status=exc.status_code,
+            reason=exc.reason,
         )
         return HTTPException(
             status_code=502,
@@ -179,12 +182,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         The fully configured :class:`~fastapi.FastAPI` application instance,
         ready to be served by an ASGI server.
     """
+    configure_logging()
     app = FastAPI(
         title="robotsix-browser",
         summary="Interactive headless-browser / form-filling service.",
         lifespan=lifespan,
     )
     app.state.settings = settings or get_settings()
+
+    @app.middleware("http")
+    async def log_requests(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Log every HTTP request/response with its correlation id.
+
+        Runs inside the ``starlette-context`` middleware so the correlation /
+        request ids it establishes are already bound and are merged into these
+        log lines by the structlog pipeline.
+        """
+        client_host = request.client.host if request.client else None
+        logger.info(
+            "request.start",
+            method=request.method,
+            path=request.url.path,
+            remote_addr=client_host,
+        )
+        response = await call_next(request)
+        logger.info(
+            "request.finished",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+        )
+        return response
+
+    # Added after ``log_requests`` so it wraps it: this middleware runs first
+    # and establishes the per-request correlation / request ids that the
+    # request logging (and every downstream handler) then observes.
+    app.add_middleware(
+        RawContextMiddleware,
+        plugins=(CorrelationIdPlugin(), RequestIdPlugin()),
+    )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -386,9 +425,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except VaultUpstreamError as exc:
             logger.warning(
-                "vault credential retrieval failed (upstream HTTP %s): %s",
-                exc.status_code,
-                exc.reason,
+                "credential retrieval failed",
+                upstream_status=exc.status_code,
+                reason=exc.reason,
             )
             raise HTTPException(
                 status_code=502,
