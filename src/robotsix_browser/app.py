@@ -417,29 +417,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except LoginFieldNotFoundError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except VaultNotConfiguredError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
         except EntryOutOfScopeError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except EntryNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except VaultUpstreamError as exc:
-            logger.warning(
-                "credential retrieval failed",
-                upstream_status=exc.status_code,
-                reason=exc.reason,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "credential retrieval failed (upstream HTTP "
-                    f"{exc.status_code}): {exc.reason}"
-                ),
-            ) from exc
         except VaultError as exc:
-            raise HTTPException(
-                status_code=502, detail="credential retrieval failed"
-            ) from exc
+            raise _vault_http_error(exc, "vault credential retrieval") from exc
         return ActionResponse(url=url)
 
     @app.post("/sessions/{session_id}/submit", response_model=ActionResponse)
