@@ -102,7 +102,9 @@ def _lookup(manager: SessionManager, session_id: str) -> Session:
         ) from None
 
 
-def _vault_http_error(exc: VaultError, operation: str) -> HTTPException:
+def _vault_http_error(
+    exc: VaultError, operation: str, *, log_event: str = "vault operation failed"
+) -> HTTPException:
     """Map a :class:`VaultError` to a safe :class:`HTTPException`.
 
     Centralizes the status choices shared by the read-only vault endpoints:
@@ -110,12 +112,14 @@ def _vault_http_error(exc: VaultError, operation: str) -> HTTPException:
     warning log and a reason-bearing detail), and any other ``VaultError`` ->
     502 with a generic detail.  ``operation`` names the endpoint action, used in
     both the log line and the error detail (e.g. ``"vault collection list"``).
+    ``log_event`` overrides the warning-log event message for callers that need
+    an endpoint-specific line (e.g. ``"credential retrieval failed"``).
     """
     if isinstance(exc, VaultNotConfiguredError):
         return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, VaultUpstreamError):
         logger.warning(
-            "vault operation failed",
+            log_event,
             operation=operation,
             upstream_status=exc.status_code,
             reason=exc.reason,
@@ -422,7 +426,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except EntryNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except VaultError as exc:
-            raise _vault_http_error(exc, "vault credential retrieval") from exc
+            raise _vault_http_error(
+                exc,
+                "vault credential retrieval",
+                log_event="credential retrieval failed",
+            ) from exc
         return ActionResponse(url=url)
 
     @app.post("/sessions/{session_id}/submit", response_model=ActionResponse)
