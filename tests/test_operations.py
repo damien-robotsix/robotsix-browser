@@ -8,13 +8,8 @@ from typing import Any
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from robotsix_browser.models import ClickRequest, FillCredentialsRequest
-from robotsix_browser.operations import (
-    _CLICK_TIMEOUT_MS,
-    _READ_VALUE_TIMEOUT_MS,
+from robotsix_browser.credential_fill import (
     LoginFieldNotFoundError,
-    SelectorNotFoundError,
-    UnsupportedUrlError,
     _dismiss_consent_walls,
     _fill_across_frames,
     _fill_first_existing,
@@ -24,9 +19,16 @@ from robotsix_browser.operations import (
     _password_candidates,
     _recover_consent_redirect,
     _username_candidates,
+    fill_credentials,
+)
+from robotsix_browser.models import ClickRequest, FillCredentialsRequest
+from robotsix_browser.operations import (
+    _CLICK_TIMEOUT_MS,
+    _READ_VALUE_TIMEOUT_MS,
+    SelectorNotFoundError,
+    UnsupportedUrlError,
     _validate_url,
     click,
-    fill_credentials,
     read_value,
 )
 

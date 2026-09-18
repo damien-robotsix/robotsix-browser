@@ -30,8 +30,9 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from robotsix_http.fastapi import create_chat_skill_router
 
-from robotsix_browser import chat_skill, operations
+from robotsix_browser import chat_skill, credential_fill, operations
 from robotsix_browser.config import Settings, get_settings
+from robotsix_browser.credential_fill import LoginFieldNotFoundError
 from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdError
 from robotsix_browser.models import (
     ActionResponse,
@@ -53,7 +54,6 @@ from robotsix_browser.models import (
     WaitRequest,
 )
 from robotsix_browser.operations import (
-    LoginFieldNotFoundError,
     SelectorNotFoundError,
     UnsupportedUrlError,
 )
@@ -369,7 +369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         session = _lookup(manager, session_id)
         try:
-            url = await operations.fill_credentials(
+            url = await credential_fill.fill_credentials(
                 session.page,
                 request,
                 vault,
