@@ -13,6 +13,8 @@ dependencies = [
     "httpx>=0.27",
     "pydantic>=2.9",
     "cryptography>=44",
+    "structlog>=24.4",
+    "starlette-context>=0.3.6",
     "robotsix-config>=0.1",
     "robotsix-http>=0.1",
 ]

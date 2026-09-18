@@ -486,7 +486,8 @@ def test_fill_credentials_upstream_failure_surfaces_safe_reason(
     assert "upstream HTTP 502" in detail
     assert "Bad Gateway: upstream vault down" in detail
     assert any(
-        "upstream HTTP 502" in record.getMessage()
+        "credential retrieval failed" in record.getMessage()
+        and "502" in record.getMessage()
         and "Bad Gateway" in record.getMessage()
         for record in caplog.records
     )
@@ -537,7 +538,8 @@ def test_vault_collections_upstream_failure_surfaces_safe_reason(
     assert "upstream HTTP 401" in detail
     assert "unauthorized: bad credentials" in detail
     assert any(
-        "upstream HTTP 401" in record.getMessage()
+        "vault operation failed" in record.getMessage()
+        and "401" in record.getMessage()
         and "bad credentials" in record.getMessage()
         for record in caplog.records
     )

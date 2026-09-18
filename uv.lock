@@ -598,6 +598,8 @@ dependencies = [
     { name = "pydantic" },
     { name = "robotsix-config" },
     { name = "robotsix-http" },
+    { name = "starlette-context" },
+    { name = "structlog" },
     { name = "uvicorn" },
 ]
 
@@ -621,6 +623,8 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "robotsix-config", git = "https://github.com/damien-robotsix/robotsix-config?rev=d29de204db62910f062456e5055fc2fe232e04a9" },
     { name = "robotsix-http", git = "https://github.com/damien-robotsix/robotsix-http.git?rev=7557325f0cd08e47124b588710da011951feb421" },
+    { name = "starlette-context", specifier = ">=0.3.6" },
+    { name = "structlog", specifier = ">=24.4" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
 
@@ -687,6 +691,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da6e7986cc70c9fa5d778eda57538edfe56/starlette-1.6.0-py3-none-any.whl", hash = "sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c", size = 75969, upload-time = "2026-08-08T18:27:56.196Z" },
+]
+
+[[package]]
+name = "starlette-context"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/fd/d28907759adf31f1112e71006b649c81a74a115b8c14645f87a5f5c83dd3/starlette_context-0.5.1.tar.gz", hash = "sha256:f6025753f8ede041778b2f2c3823e2da9df3c2d94832575bcb59374216b7c2b2", size = 8397, upload-time = "2026-02-28T11:32:00.185Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/9f/c1d842f7a628a1aaa6754f3e7d28218978af8ed28170c7f9eec49dc6401a/starlette_context-0.5.1-py3-none-any.whl", hash = "sha256:df55da1d7ae3453e89874b9d5c1d40a98dd2f1293c37791dd7c1a907087c9b5e", size = 12836, upload-time = "2026-02-28T11:32:01.254Z" },
+]
+
+[[package]]
+name = "structlog"
+version = "26.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/89/b4a0bcfdf4f71a3dea31379f095929613d7e4528a0996bca6aa964cd0dca/structlog-26.1.0.tar.gz", hash = "sha256:f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7", size = 1459881, upload-time = "2026-06-06T07:33:39.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/18/489c97b834dfff9cf2fc2507cede4bcd4b11e67f84bc462acd1992496f86/structlog-26.1.0-py3-none-any.whl", hash = "sha256:e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e", size = 73764, upload-time = "2026-06-06T07:33:38.046Z" },
 ]
 
 [[package]]
