@@ -27,6 +27,7 @@ modules:
       - src/robotsix_browser/bwcrypto.py
       - src/robotsix_browser/chat_skill.py
       - src/robotsix_browser/config.py
+      - src/robotsix_browser/credential_fill.py
       - src/robotsix_browser/filehub.py
       - src/robotsix_browser/models.py
       - src/robotsix_browser/operations.py
