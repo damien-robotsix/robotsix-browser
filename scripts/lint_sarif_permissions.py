@@ -20,17 +20,13 @@ Usage as an importable module (called from tests)::
 
 from __future__ import annotations
 
-import glob
 import os
 import sys
 
 try:
-    import yaml
-except ImportError:
-    import subprocess
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
-    import yaml
+    from _workflow_lint import iter_workflow_docs, report
+except ImportError:  # imported as ``scripts.lint_sarif_permissions``
+    from scripts._workflow_lint import iter_workflow_docs, report
 
 
 def _has_se_write(perms: object) -> bool:
@@ -65,19 +61,7 @@ def check(
         return 0
 
     errors: list[str] = []
-    for path in sorted(
-        glob.glob(f"{workflow_dir}/*.yml") + glob.glob(f"{workflow_dir}/*.yaml")
-    ):
-        with open(path) as fh:
-            try:
-                doc = yaml.safe_load(fh)
-            except yaml.YAMLError as exc:
-                errors.append(f"{path}: invalid YAML — {exc}")
-                continue
-
-        if not isinstance(doc, dict) or "jobs" not in doc:
-            continue
-
+    for path, doc in iter_workflow_docs(workflow_dir, errors):
         root_perms = doc.get("permissions", {})
         # A missing root permissions block (None) means "inherit
         # org/repo defaults" — effectively permissive.  An empty
@@ -139,13 +123,7 @@ def check(
                     f"workflow level)."
                 )
 
-    if errors:
-        for msg in errors:
-            print(f"::error file={msg.split(':')[0]}::{msg}", file=sys.stderr)
-        return 1
-
-    print("::notice::All SARIF-uploading jobs declare security-events:write.")
-    return 0
+    return report(errors, "All SARIF-uploading jobs declare security-events:write.")
 
 
 if __name__ == "__main__":

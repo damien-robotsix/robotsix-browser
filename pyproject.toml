@@ -78,7 +78,7 @@ packages = ["robotsix_browser"]
 min_confidence = 80
 
 [tool.deptry]
-known_first_party = ["robotsix_browser"]
+known_first_party = ["robotsix_browser", "scripts", "_workflow_lint"]
 
 [tool.deptry.per_rule_ignores]
 # Tooling invoked via CLI, never imported.
