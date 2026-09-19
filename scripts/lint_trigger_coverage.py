@@ -18,18 +18,14 @@ Usage as an importable module::
 
 from __future__ import annotations
 
-import glob
 import os
 import re
 import sys
 
 try:
-    import yaml
-except ImportError:
-    import subprocess
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
-    import yaml
+    from _workflow_lint import iter_workflow_docs, report
+except ImportError:  # imported as ``scripts.lint_trigger_coverage``
+    from scripts._workflow_lint import iter_workflow_docs, report
 
 # ---------------------------------------------------------------------------
 # Patterns for extracting event-name comparisons from if: expressions
@@ -70,19 +66,7 @@ def check(*, workflow_dir: str = ".github/workflows") -> int:
         return 0
 
     errors: list[str] = []
-    for path in sorted(
-        glob.glob(f"{workflow_dir}/*.yml") + glob.glob(f"{workflow_dir}/*.yaml")
-    ):
-        with open(path) as fh:
-            try:
-                doc = yaml.safe_load(fh)
-            except yaml.YAMLError as exc:
-                errors.append(f"{path}: invalid YAML — {exc}")
-                continue
-
-        if not isinstance(doc, dict) or "jobs" not in doc:
-            continue
-
+    for path, doc in iter_workflow_docs(workflow_dir, errors):
         triggers = _extract_event_names(doc.get("on"))
         if not triggers:
             continue
@@ -116,13 +100,9 @@ def check(*, workflow_dir: str = ".github/workflows") -> int:
                         f"workflow trigger — the job can never run."
                     )
 
-    if errors:
-        for msg in errors:
-            print(f"::error file={msg.split(':')[0]}::{msg}", file=sys.stderr)
-        return 1
-
-    print("::notice::All job if: conditions are satisfiable by declared triggers.")
-    return 0
+    return report(
+        errors, "All job if: conditions are satisfiable by declared triggers."
+    )
 
 
 if __name__ == "__main__":
