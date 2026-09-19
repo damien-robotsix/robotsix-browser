@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from robotsix_browser.app import create_app
 from robotsix_browser.config import Settings
-from robotsix_browser.logging_config import configure_logging, merge_request_context
+from robotsix_browser.logging_config import configure_logging
 
 
 def _json_log_lines(captured: str) -> list[dict[str, object]]:
@@ -30,10 +30,29 @@ def _json_log_lines(captured: str) -> list[dict[str, object]]:
     return records
 
 
-def test_merge_request_context_is_noop_outside_request() -> None:
-    """With no active request context the event dict is returned unchanged."""
-    event = {"event": "hello"}
-    assert merge_request_context(None, "info", dict(event)) == event
+def test_request_ids_absent_outside_request_scope(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Events logged outside a request carry no correlation / request ids.
+
+    ``bound_request_context`` only binds the ids while an HTTP request is being
+    handled, so a bare ``structlog`` log line emitted outside that scope must not
+    leak them.
+    """
+    monkeypatch.setenv("ROBOTSIX_LOG_FORMAT", "json")
+    monkeypatch.setenv("ROBOTSIX_LOG_LEVEL", "INFO")
+    configure_logging()
+
+    logger = structlog.get_logger("test.scope")
+    logger.info("outside-request-event")
+
+    matching = [
+        r
+        for r in _json_log_lines(capsys.readouterr().out)
+        if r.get("event") == "outside-request-event"
+    ]
+    assert matching, "expected the out-of-request event to be logged"
+    assert all("correlation_id" not in r and "request_id" not in r for r in matching)
 
 
 def test_requests_are_logged_as_json_with_correlation_id(

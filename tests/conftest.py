@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 import pytest
@@ -27,6 +28,26 @@ def _no_retry_backoff_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
         return None
 
     monkeypatch.setattr("robotsix_http.client.asyncio.sleep", _instant)
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog_root_handler() -> Iterator[None]:
+    """Drop the shared structlog root handler between tests.
+
+    ``robotsix_llmio.setup_structlog`` is idempotent: it keeps a single marked
+    handler on the root logger and rebinds its stream on repeat calls. Under
+    ``capsys`` the previous test's captured stream is already closed by the time
+    the next ``configure_logging`` runs, so the reused handler's ``setStream``
+    flush would raise ``ValueError: I/O operation on closed file``. Removing the
+    marked handler (without flushing it) before each test makes the next
+    ``setup_structlog`` create a fresh handler bound to the live stream.
+    """
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        # Marker attribute set by robotsix_llmio.setup_structlog on its handler.
+        if getattr(handler, "_robotsix_llmio_configured", False):
+            root.removeHandler(handler)
+    yield
 
 
 @pytest.fixture(scope="session")
