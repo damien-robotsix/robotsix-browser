@@ -36,7 +36,7 @@ from robotsix_browser import chat_skill, credential_fill, operations
 from robotsix_browser.config import Settings, get_settings
 from robotsix_browser.credential_fill import LoginFieldNotFoundError
 from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdError
-from robotsix_browser.logging_config import configure_logging
+from robotsix_browser.logging_config import bound_request_context, configure_logging
 from robotsix_browser.models import (
     ActionResponse,
     ClickRequest,
@@ -202,24 +202,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Log every HTTP request/response with its correlation id.
 
         Runs inside the ``starlette-context`` middleware so the correlation /
-        request ids it establishes are already bound and are merged into these
-        log lines by the structlog pipeline.
+        request ids it establishes are available; ``bound_request_context``
+        binds them into structlog's contextvars for the duration of the request
+        so the shared pipeline merges them onto these log lines and onto every
+        event emitted by the downstream route handlers.
         """
-        client_host = request.client.host if request.client else None
-        logger.info(
-            "request.start",
-            method=request.method,
-            path=request.url.path,
-            remote_addr=client_host,
-        )
-        response = await call_next(request)
-        logger.info(
-            "request.finished",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-        )
-        return response
+        with bound_request_context():
+            client_host = request.client.host if request.client else None
+            logger.info(
+                "request.start",
+                method=request.method,
+                path=request.url.path,
+                remote_addr=client_host,
+            )
+            response = await call_next(request)
+            logger.info(
+                "request.finished",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+            )
+            return response
 
     # Added after ``log_requests`` so it wraps it: this middleware runs first
     # and establishes the per-request correlation / request ids that the
