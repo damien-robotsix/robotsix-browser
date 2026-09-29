@@ -14,23 +14,23 @@ dependencies = [
     "pydantic>=2.9",
     "cryptography>=44",
     "structlog>=24.4",
-    "starlette-context>=0.3.6",
     "robotsix-config>=0.1",
     "robotsix-http>=0.1",
     "robotsix-llmio>=0.1",
 ]
 
 [tool.uv]
-# robotsix-llmio transitively pins an older robotsix-http rev (791dcf3) via its
-# own [tool.uv.sources]; browser already runs on the newer 7557325f. Override so
-# the whole tree resolves to browser's newer pin instead of downgrading it.
+# robotsix-llmio transitively pins an older robotsix-http rev via its own
+# [tool.uv.sources]; browser runs on the newer 2fc08979 (adds the shared
+# robotsix_http.fastapi correlation-id middleware). Override so the whole tree
+# resolves to browser's newer pin instead of downgrading it.
 override-dependencies = [
-    "robotsix-http @ git+https://github.com/damien-robotsix/robotsix-http.git@7557325f0cd08e47124b588710da011951feb421",
+    "robotsix-http @ git+https://github.com/damien-robotsix/robotsix-http.git@2fc08979da9a443bd28889aae14d55838b53d4ee",
 ]
 
 [tool.uv.sources]
 robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "d29de204db62910f062456e5055fc2fe232e04a9" }
-robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "7557325f0cd08e47124b588710da011951feb421" }
+robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "2fc08979da9a443bd28889aae14d55838b53d4ee" }
 robotsix-llmio = { git = "https://github.com/damien-robotsix/robotsix-llmio", rev = "795561d4774e524e1c60eacb28c887ca7cd7884b" }
 
 [project.scripts]

@@ -35,9 +35,9 @@ def test_request_ids_absent_outside_request_scope(
 ) -> None:
     """Events logged outside a request carry no correlation / request ids.
 
-    ``bound_request_context`` only binds the ids while an HTTP request is being
-    handled, so a bare ``structlog`` log line emitted outside that scope must not
-    leak them.
+    The shared ``CorrelationIdMiddleware`` only binds the ids while an HTTP
+    request is being handled, so a bare ``structlog`` log line emitted outside
+    that scope must not leak them.
     """
     monkeypatch.setenv("ROBOTSIX_LOG_FORMAT", "json")
     monkeypatch.setenv("ROBOTSIX_LOG_LEVEL", "INFO")
