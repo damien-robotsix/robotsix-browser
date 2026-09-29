@@ -9,13 +9,13 @@ console renderer for local development).  It is idempotent and, with
 ``correlation_id=True``, includes :func:`structlog.contextvars.merge_contextvars`
 so any ids bound on the current context appear on every event.
 
-Per-request correlation / request ids are no longer merged by a custom
-processor (``setup_structlog`` exposes no hook to inject one).  Instead the HTTP
-middleware binds them into structlog contextvars for the duration of the
-request via :func:`bound_request_context`, which reads the ids maintained by
-``starlette-context``.  This lets a single request be traced from the calling
-agent through robotsix-browser and on to its Vaultwarden / file-hub
-dependencies.
+Per-request correlation / request ids are bound into structlog contextvars by
+the fleet-shared :class:`robotsix_http.fastapi.CorrelationIdMiddleware`, a raw
+ASGI middleware wired in :func:`robotsix_browser.app.create_app`.  Because it is
+pure ASGI (not ``BaseHTTPMiddleware``) the ids it binds propagate across
+``await`` boundaries all the way to the endpoint, so a single request can be
+traced from the calling agent through robotsix-browser and on to its
+Vaultwarden / file-hub dependencies.
 
 Two environment variables control the configuration (browser keeps its own env
 contract; the explicit ``level``/``fmt`` arguments passed below deliberately
@@ -31,21 +31,10 @@ bypass llmio's differently-named ``LOG_LEVEL``/``LOG_FORMAT`` fallbacks):
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 
-import structlog
 from robotsix_llmio import setup_structlog
-from starlette_context import context
 
-__all__ = ["bound_request_context", "configure_logging"]
-
-#: starlette-context header keys populated by the correlation / request id
-#: plugins, mapped to the structlog contextvars field they are bound under.
-_CONTEXT_FIELDS: tuple[tuple[str, str], ...] = (
-    ("X-Correlation-ID", "correlation_id"),
-    ("X-Request-ID", "request_id"),
-)
+__all__ = ["configure_logging"]
 
 
 def _resolve_level(level: str | None = None) -> str:
@@ -72,27 +61,6 @@ def _resolve_fmt(json_logs: bool | None = None) -> str:
     return "json" if json_logs else "console"
 
 
-@contextmanager
-def bound_request_context() -> Iterator[None]:
-    """Bind the per-request correlation / request ids for the block's duration.
-
-    Reads the ids maintained by ``starlette-context`` (populated by the
-    ``CorrelationIdPlugin`` / ``RequestIdPlugin`` middleware) and binds them into
-    structlog's contextvars, so every event emitted inside the ``with`` block —
-    including those from downstream route handlers — carries them.  Keys whose
-    context value is absent or falsy are skipped, and outside a request scope
-    nothing is bound.  All bindings are removed again on exit.
-    """
-    bindings: dict[str, str] = {}
-    if context.exists():
-        for header, field in _CONTEXT_FIELDS:
-            value = context.get(header)
-            if value:
-                bindings[field] = value
-    with structlog.contextvars.bound_contextvars(**bindings):
-        yield
-
-
 def configure_logging(
     *, level: str | None = None, json_logs: bool | None = None
 ) -> None:
@@ -101,10 +69,10 @@ def configure_logging(
     Delegates all pipeline wiring to :func:`robotsix_llmio.setup_structlog`,
     passing the level and renderer resolved from browser's own environment
     contract explicitly (so llmio's differently-named env fallbacks are never
-    used).  ``correlation_id=True`` ensures ids bound via
-    :func:`bound_request_context` are merged onto each event.  Idempotent: safe
-    to call from the application factory on every app build — ``setup_structlog``
-    reuses its marked root handler.
+    used).  ``correlation_id=True`` ensures ids bound by the shared
+    :class:`robotsix_http.fastapi.CorrelationIdMiddleware` are merged onto each
+    event.  Idempotent: safe to call from the application factory on every app
+    build — ``setup_structlog`` reuses its marked root handler.
 
     Args:
         level: Optional explicit log level name (e.g. ``"DEBUG"``).  When

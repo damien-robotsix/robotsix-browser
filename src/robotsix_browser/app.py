@@ -28,15 +28,16 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from robotsix_http.fastapi import create_chat_skill_router
-from starlette_context.middleware import RawContextMiddleware
-from starlette_context.plugins import CorrelationIdPlugin, RequestIdPlugin
+from robotsix_http.fastapi import (
+    create_chat_skill_router,
+    create_correlation_id_middleware,
+)
 
 from robotsix_browser import chat_skill, credential_fill, operations
 from robotsix_browser.config import Settings, get_settings
 from robotsix_browser.credential_fill import LoginFieldNotFoundError
 from robotsix_browser.filehub import FileHubClient, FileHubError, InvalidFileIdError
-from robotsix_browser.logging_config import bound_request_context, configure_logging
+from robotsix_browser.logging_config import configure_logging
 from robotsix_browser.models import (
     ActionResponse,
     ClickRequest,
@@ -201,35 +202,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> Response:
         """Log every HTTP request/response with its correlation id.
 
-        Runs inside the ``starlette-context`` middleware so the correlation /
-        request ids it establishes are available; ``bound_request_context``
-        binds them into structlog's contextvars for the duration of the request
-        so the shared pipeline merges them onto these log lines and onto every
-        event emitted by the downstream route handlers.
+        Runs inside the shared :class:`CorrelationIdMiddleware` so the
+        correlation / request ids it binds into structlog's contextvars are
+        already established; the shared pipeline merges them onto these log lines
+        and onto every event emitted by the downstream route handlers.
         """
-        with bound_request_context():
-            client_host = request.client.host if request.client else None
-            logger.info(
-                "request.start",
-                method=request.method,
-                path=request.url.path,
-                remote_addr=client_host,
-            )
-            response = await call_next(request)
-            logger.info(
-                "request.finished",
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-            )
-            return response
+        client_host = request.client.host if request.client else None
+        logger.info(
+            "request.start",
+            method=request.method,
+            path=request.url.path,
+            remote_addr=client_host,
+        )
+        response = await call_next(request)
+        logger.info(
+            "request.finished",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+        )
+        return response
 
-    # Added after ``log_requests`` so it wraps it: this middleware runs first
-    # and establishes the per-request correlation / request ids that the
-    # request logging (and every downstream handler) then observes.
-    app.add_middleware(
-        RawContextMiddleware,
-        plugins=(CorrelationIdPlugin(), RequestIdPlugin()),
+    # Registered after ``log_requests`` so it wraps it: this raw-ASGI middleware
+    # runs first and binds the per-request correlation / request ids that the
+    # request logging (and every downstream handler) then observes.  Browser's
+    # header names and both context keys are preserved: the id is read from the
+    # first present of ``X-Correlation-ID`` / ``X-Request-ID`` (echoed back on
+    # ``X-Correlation-ID``) and bound under both ``correlation_id`` and
+    # ``request_id`` structlog contextvars.
+    create_correlation_id_middleware(
+        app,
+        header_name=("X-Correlation-ID", "X-Request-ID"),
+        context_field=("correlation_id", "request_id"),
     )
 
     @app.get("/health")
