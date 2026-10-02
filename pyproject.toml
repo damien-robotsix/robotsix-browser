@@ -75,6 +75,9 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Put the repo root on sys.path so tests can import the `scripts` package
+# (e.g. the Dockerfile / workflow linters invoked directly in CI).
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.14"
