@@ -41,7 +41,7 @@ modules:
       - src/robotsix_browser/vault.py
 
   - name: scripts
-    description: CI-invoked GitHub Actions workflow linters and their shared scaffolding.
+    description: CI-invoked repository linters (GitHub Actions workflows, Dockerfile) and their shared scaffolding.
     paths:
       - scripts/_workflow_lint.py
       - scripts/lint_sarif_permissions.py

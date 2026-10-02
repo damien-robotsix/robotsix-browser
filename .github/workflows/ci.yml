@@ -52,6 +52,9 @@ jobs:
       - name: Dead code
         run: uv run vulture --ignore-decorators "@field_validator,@model_validator" src/ vulture_whitelist.py
 
+      - name: Dockerfile image pins
+        run: uv run python scripts/lint_dockerfile_pins.py Dockerfile
+
       - name: Config schema sync
         run: |
           uv run python -c "
