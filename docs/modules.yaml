@@ -44,6 +44,7 @@ modules:
     description: CI-invoked repository linters (GitHub Actions workflows, Dockerfile) and their shared scaffolding.
     paths:
       - scripts/_workflow_lint.py
+      - scripts/lint_dockerfile_pins.py
       - scripts/lint_sarif_permissions.py
       - scripts/lint_trigger_coverage.py
 
@@ -54,6 +55,7 @@ modules:
       - tests/test_api.py
       - tests/test_bwcrypto.py
       - tests/test_chat_skill.py
+      - tests/test_dockerfile_pins.py
       - tests/test_filehub.py
       - tests/test_linkedin_fill_live.py
       - tests/test_logging.py
