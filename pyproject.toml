@@ -30,9 +30,9 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "d29de204db62910f062456e5055fc2fe232e04a9" }
-robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "be2dcd5e58addaf6684ceb67450436c13aae6619" }
-robotsix-llmio = { git = "https://github.com/damien-robotsix/robotsix-llmio", rev = "795561d4774e524e1c60eacb28c887ca7cd7884b" }
+robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "6476890e576dc3620aea332ce0c36f4e2236cf3a" }
+robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "2aff2f6863432c25b097ee171d3a50a694cfb148" }
+robotsix-llmio = { git = "https://github.com/damien-robotsix/robotsix-llmio", rev = "c8cc545cb33ef8983128c32f12dabb4be46421c4" }
 
 [project.scripts]
 robotsix-browser = "robotsix_browser.__main__:main"
