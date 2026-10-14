@@ -222,11 +222,24 @@ class Keyring:
             return key
         return self.user_key
 
-    def decrypt(self, enc: str | None, organization_id: str | None = None) -> str:
-        """Decrypt an EncString to a UTF-8 string (empty input -> empty str)."""
+    def decrypt(
+        self,
+        enc: str | None,
+        organization_id: str | None = None,
+        cipher_key: str | None = None,
+    ) -> str:
+        """Decrypt an EncString to a UTF-8 string (empty input -> empty str).
+
+        ``cipher_key`` is the cipher's own ``key`` field. Recent Bitwarden
+        clients encrypt each item's fields with a per-item key, itself wrapped
+        by the user/org key; when present it must be unwrapped first.
+        """
         if not enc:
             return ""
-        return decrypt_sym(enc, self._key_for(organization_id)).decode("utf-8")
+        key = self._key_for(organization_id)
+        if cipher_key:
+            key = SymmetricKey.from_bytes(decrypt_sym(cipher_key, key))
+        return decrypt_sym(enc, key).decode("utf-8")
 
 
 def unlock(

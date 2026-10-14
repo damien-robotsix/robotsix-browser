@@ -134,7 +134,9 @@ def _extract_credential(item: dict[str, Any], collection_id: str) -> VaultCreden
 def _cipher_name(cipher: dict[str, Any], keyring: Keyring) -> str:
     """Decrypt a cipher's ``name`` to plaintext (never a secret value)."""
     try:
-        return keyring.decrypt(cipher.get("name"), cipher.get("organizationId"))
+        return keyring.decrypt(
+            cipher.get("name"), cipher.get("organizationId"), cipher.get("key")
+        )
     except VaultCryptoError as exc:
         raise VaultError("failed to decrypt vault entry name") from exc
 
@@ -148,9 +150,10 @@ def _decrypt_cipher(cipher: dict[str, Any], keyring: Keyring) -> dict[str, Any]:
     """
     login = cipher.get("login") or {}
     org_id = cipher.get("organizationId")
+    cipher_key = cipher.get("key")
     try:
-        username = keyring.decrypt(login.get("username"), org_id)
-        password = keyring.decrypt(login.get("password"), org_id)
+        username = keyring.decrypt(login.get("username"), org_id, cipher_key)
+        password = keyring.decrypt(login.get("password"), org_id, cipher_key)
     except VaultCryptoError as exc:
         raise VaultError("failed to decrypt vault entry login") from exc
     return {
