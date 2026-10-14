@@ -264,18 +264,29 @@ async def _fill_login_field(
         ) from exc
 
 
-def _username_candidates(scope: Any, client_selector: str) -> list[Locator]:
+def _client_candidate(scope: Any, client_selector: str | None) -> list[Locator]:
+    """The caller-supplied selector as a leading candidate, or nothing.
+
+    The selectors on :class:`FillCredentialsRequest` are optional hints: when
+    omitted (typical for a two-phase login where the agent only knows the
+    field that is currently on screen) detection relies on the built-in
+    fallback tiers alone.
+    """
+    return [] if client_selector is None else [scope.locator(client_selector)]
+
+
+def _username_candidates(scope: Any, client_selector: str | None) -> list[Locator]:
     """Prioritized candidate locators for the username / email input.
 
-    Order: the caller-supplied CSS selector, the classic LinkedIn member-login
-    and guest sign-in ids, ``type=email``, then structural attributes
+    Order: the caller-supplied CSS selector (when given), the classic LinkedIn
+    member-login and guest sign-in ids, ``type=email``, then structural attributes
     (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
     matching — so detection does not rely on hard-coded CSS ids alone.
     ``scope`` is the frame (top-level or child) being searched.
     """
     aria_role = cast(Any, "textbox")
     return [
-        scope.locator(client_selector),
+        *_client_candidate(scope, client_selector),
         scope.locator("#username"),
         scope.locator("#session_key"),
         scope.locator("#email"),
@@ -290,18 +301,18 @@ def _username_candidates(scope: Any, client_selector: str) -> list[Locator]:
     ]
 
 
-def _password_candidates(scope: Any, client_selector: str) -> list[Locator]:
+def _password_candidates(scope: Any, client_selector: str | None) -> list[Locator]:
     """Prioritized candidate locators for the password input.
 
-    Order: the caller-supplied CSS selector, the classic LinkedIn member-login
-    and guest sign-in ids, ``type=password``, then structural attributes
+    Order: the caller-supplied CSS selector (when given), the classic LinkedIn
+    member-login and guest sign-in ids, ``type=password``, then structural attributes
     (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
     matching — so detection does not rely on hard-coded CSS ids alone.
     ``scope`` is the frame (top-level or child) being searched.
     """
     aria_role = cast(Any, "textbox")
     return [
-        scope.locator(client_selector),
+        *_client_candidate(scope, client_selector),
         scope.locator("#password"),
         scope.locator("#session_password"),
         scope.locator("#passwd"),
@@ -336,6 +347,25 @@ async def _fill_first_existing(
     raise LoginFieldNotFoundError(
         f"login {field_label} field {first_selector} not found on current page"
     )
+
+
+async def _field_visible(
+    page: Page, candidates: Callable[[Any], list[Locator]]
+) -> bool:
+    """Whether a login field is already *visible* in an eligible frame.
+
+    Used to gate the best-effort consent-wall dismissal: when the field to
+    fill is already showing there is no wall hiding it, and clicking a
+    "continue"-named button would instead advance a two-phase login (Lenovo's
+    "Continuer", Microsoft's "Next", …) past the screen being filled.  A field
+    that exists but is hidden (a form revealed only after the wall is
+    accepted) does not count, so the dismissal still runs for it.
+    """
+    for frame in _login_frames(page):
+        for candidate in candidates(frame):
+            if await candidate.count() and await candidate.first.is_visible():
+                return True
+    return False
 
 
 async def _fill_across_frames(
@@ -401,24 +431,43 @@ async def fill_credentials(
     frame holds no candidate login field.  Each candidate is located within a
     short, bounded ``timeout_ms`` (not the 30s global default); a still-absent
     field raises :class:`LoginFieldNotFoundError` for a clean 4xx.
+
+    ``request.fields`` selects what is typed.  ``both`` (the default) fills
+    username then password on a single-screen form.  ``username`` or
+    ``password`` fills only that field, which is how a two-phase login
+    (identifier screen → "continue" → password screen) is driven: one call per
+    screen, with the intermediate click issued by the caller in between.  The
+    vault entry is fetched afresh on every call and the password is still only
+    ever typed into the page, never returned.
     """
     credential = await vault.get_credential(request.entry)
     # Recover if LinkedIn redirected the whole page to the consent wall before
     # the login form can be bound (otherwise we would clean-fail on the wall).
     await _recover_consent_redirect(page, login_url=login_url)
-    await _dismiss_consent_walls(page)
-    await _fill_across_frames(
-        page,
-        lambda scope: _username_candidates(scope, request.username_selector),
-        credential.username,
-        field_label="username",
-        timeout_ms=timeout_ms,
+    # Only hunt for a consent interstitial when the first field to fill is not
+    # already on the page: an identifier screen's own "Continue" button matches
+    # the consent-button pattern and must not be clicked ahead of the fill.
+    first_field: Callable[[Any], list[Locator]] = (
+        (lambda scope: _password_candidates(scope, request.password_selector))
+        if request.fields == "password"
+        else (lambda scope: _username_candidates(scope, request.username_selector))
     )
-    await _fill_across_frames(
-        page,
-        lambda scope: _password_candidates(scope, request.password_selector),
-        credential.password,
-        field_label="password",
-        timeout_ms=timeout_ms,
-    )
+    if not await _field_visible(page, first_field):
+        await _dismiss_consent_walls(page)
+    if request.fields in ("both", "username"):
+        await _fill_across_frames(
+            page,
+            lambda scope: _username_candidates(scope, request.username_selector),
+            credential.username,
+            field_label="username",
+            timeout_ms=timeout_ms,
+        )
+    if request.fields in ("both", "password"):
+        await _fill_across_frames(
+            page,
+            lambda scope: _password_candidates(scope, request.password_selector),
+            credential.password,
+            field_label="password",
+            timeout_ms=timeout_ms,
+        )
     return page.url
