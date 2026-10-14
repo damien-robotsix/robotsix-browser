@@ -175,6 +175,21 @@ def test_get_credential_by_decrypted_name() -> None:
     assert cred.password == _SECRET
 
 
+def test_get_credential_with_per_item_cipher_key() -> None:
+    """Items encrypted under their own cipher key (recent clients) decrypt."""
+    sync = _sync_with_entry(cipher_key=True)
+    cred = asyncio.run(_client(_handler_for(sync)).get_credential("linkedin.com"))
+    assert cred.username == "alice@example.com"
+    assert cred.password == _SECRET
+
+
+def test_list_items_with_per_item_cipher_key() -> None:
+    """A cipher-key item no longer fails the whole listing."""
+    sync = _sync_with_entry(cipher_key=True)
+    result = asyncio.run(_client(_handler_for(sync)).list_items())
+    assert result == [{"id": "entry-1", "name": "linkedin.com"}]
+
+
 def test_get_credential_not_found() -> None:
     sync = _sync_with_entry()
     with pytest.raises(EntryNotFoundError):

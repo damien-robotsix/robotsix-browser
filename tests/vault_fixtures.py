@@ -86,6 +86,8 @@ def build_sync(
 
     ``entries`` is a list of ``{"id", "name", "username", "password"}`` dicts
     (optionally ``"collectionIds"``); each becomes an org-encrypted cipher.
+    With ``"cipher_key": True`` the fields are encrypted under a per-item key
+    wrapped by the org key, as recent Bitwarden clients do.
     """
     user_key_raw = os.urandom(64)
     user_key = SymmetricKey.from_bytes(user_key_raw)
@@ -106,22 +108,22 @@ def build_sync(
 
     ciphers: list[dict[str, Any]] = []
     for entry in entries:
-        ciphers.append(
-            {
-                "id": entry["id"],
-                "organizationId": org_id,
-                "collectionIds": entry.get("collectionIds", [collection_id]),
-                "name": make_enc_string(org_key, entry["name"].encode("utf-8")),
-                "login": {
-                    "username": make_enc_string(
-                        org_key, entry["username"].encode("utf-8")
-                    ),
-                    "password": make_enc_string(
-                        org_key, entry["password"].encode("utf-8")
-                    ),
-                },
-            }
-        )
+        field_key = org_key
+        cipher: dict[str, Any] = {
+            "id": entry["id"],
+            "organizationId": org_id,
+            "collectionIds": entry.get("collectionIds", [collection_id]),
+        }
+        if entry.get("cipher_key"):
+            cipher_key_raw = os.urandom(64)
+            field_key = SymmetricKey.from_bytes(cipher_key_raw)
+            cipher["key"] = make_enc_string(org_key, cipher_key_raw)
+        cipher["name"] = make_enc_string(field_key, entry["name"].encode("utf-8"))
+        cipher["login"] = {
+            "username": make_enc_string(field_key, entry["username"].encode("utf-8")),
+            "password": make_enc_string(field_key, entry["password"].encode("utf-8")),
+        }
+        ciphers.append(cipher)
 
     return {
         "profile": {
