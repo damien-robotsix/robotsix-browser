@@ -295,6 +295,70 @@ def test_fill_credentials_injects_without_leaking(
     assert user.json()["value"] == "svc-ovh"
 
 
+#: Two-phase login (Lenovo / Microsoft style): screen 1 has only the email
+#: field; the password field is rendered only after the "Continue" click.
+_TWO_PHASE_LOGIN_HTML = (
+    "<form onsubmit='return false'>"
+    "<div id='s1'><input id='email' type='email' name='email'>"
+    "<button type='button' onclick=\"document.getElementById('s1').remove();"
+    "document.getElementById('s2').style.display='block'\">Continue</button></div>"
+    "<div id='s2' style='display:none'>"
+    "<input id='pwd' type='password' name='password' "
+    "oninput=\"document.getElementById('typed').value='yes'\">"
+    "<input id='typed' type='hidden' value='no'></div>"
+    "</form>"
+)
+
+
+def test_fill_credentials_two_phase_login(
+    browser_available: None, fast_fill_client: TestClient, fake_secret: str
+) -> None:
+    """A two-phase login is driven as username → click → password.  The old
+    single-call shape fails cleanly on screen 1 (no password field yet)."""
+    client = fast_fill_client
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(
+        f"/sessions/{session_id}/navigate",
+        json={"url": _data_url(_TWO_PHASE_LOGIN_HTML)},
+    )
+
+    # Screen 1 with the default ``both``: clean 422 naming the password field.
+    both = client.post(
+        f"/sessions/{session_id}/fill-credentials", json={"entry": "ovh-portal"}
+    )
+    assert both.status_code == 422
+    assert "password" in both.json()["detail"]
+    assert fake_secret not in both.text
+
+    # Screen 1: username only, no selector hint (detection via type=email).
+    first = client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={"entry": "ovh-portal", "fields": "username"},
+    )
+    assert first.status_code == 200, first.text
+    email = client.get(f"/sessions/{session_id}/value", params={"selector": "#email"})
+    assert email.json()["value"] == "svc-ovh"
+
+    # Intermediate continue click reveals screen 2.
+    clicked = client.post(
+        f"/sessions/{session_id}/click", json={"role": "button", "name": "Continue"}
+    )
+    assert clicked.status_code == 200
+
+    # Screen 2: password only.  The secret is typed, never returned.
+    second = client.post(
+        f"/sessions/{session_id}/fill-credentials",
+        json={"entry": "ovh-portal", "fields": "password"},
+    )
+    assert second.status_code == 200, second.text
+    assert fake_secret not in second.text
+    assert fake_secret not in first.text
+    # Prove the password landed via the page-side marker — the password value
+    # itself is deliberately never read back over HTTP.
+    typed = client.get(f"/sessions/{session_id}/value", params={"selector": "#typed"})
+    assert typed.json()["value"] == "yes"
+
+
 def test_fill_credentials_out_of_scope_fails_cleanly(
     browser_available: None, client: TestClient, fake_secret: str
 ) -> None:

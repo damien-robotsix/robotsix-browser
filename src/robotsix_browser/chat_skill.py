@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import get_args
 
-from robotsix_browser.models import LoadState, WaitUntil
+from robotsix_browser.models import CredentialFields, LoadState, WaitUntil
 
 #: Enum members advertised in the skill, derived from the ``Literal`` types in
 #: :mod:`robotsix_browser.models` (same drift-guard spirit as the CI "Config
@@ -27,6 +27,7 @@ from robotsix_browser.models import LoadState, WaitUntil
 #: stale.
 WAIT_UNTIL_VALUES = " | ".join(get_args(WaitUntil))
 LOAD_STATE_VALUES = " | ".join(get_args(LoadState))
+CREDENTIAL_FIELDS_VALUES = " | ".join(get_args(CredentialFields))
 
 
 def chat_skill() -> str:
@@ -96,12 +97,23 @@ result.
   - query: `{{"selector": "str (CSS)"}}`
   - response: `{{"selector": "str", "value": "str"}}`
 - **fill_credentials** — `POST /sessions/{{id}}/fill-credentials`
-  - request: `{{"entry": "str (vault entry name or id)", "username_selector": "str (CSS)", "password_selector": "str (CSS)"}}`
+  - request: `{{"entry": "str (vault entry name or id)", "fields": "{CREDENTIAL_FIELDS_VALUES} (default both)", "username_selector": "str | None (CSS hint)", "password_selector": "str | None (CSS hint)"}}`
   - Resolves the scoped Vaultwarden entry server-side: the vault is enumerated
     via `GET /api/sync` and unlocked with the configured master password to
     decrypt the entry.  username/password are typed directly into the fields
     and are never returned, logged, or surfaced to the agent.  Only fills the
     form; it never submits.
+  - `fields` picks what is typed.  `both` is for a single-screen form with
+    both inputs present.  **Two-phase logins** (email/identifier on screen 1,
+    password on screen 2 — Lenovo, Microsoft, Google, Amazon, …) are driven
+    as two calls: `fields: "username"` on screen 1, then `click` the
+    continue/next button, then `fields: "password"` on screen 2.  Never ask
+    the operator for the email to type it by hand — the username is in the
+    vault entry and `fields: "username"` injects it.
+  - The selectors are optional hints: each is tried first, then the built-in
+    detection (known ids, `type=email`/`password`, `name`/`autocomplete`,
+    ARIA name).  A selector for a field not being filled is ignored.  A
+    missing field returns `422 "login <field> field ... not found"`.
 
 ## Vault diagnostics (read-only)
 

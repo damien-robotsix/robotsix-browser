@@ -72,6 +72,13 @@ class UploadRequest(BaseModel):
     file_id: str
 
 
+#: Which part of the vault entry a ``fill-credentials`` call types.  ``both``
+#: is the classic single-screen form; ``username`` / ``password`` serve
+#: two-phase logins (identifier screen, then a separate password screen) where
+#: only one of the two fields exists on the page at a time.
+CredentialFields = Literal["both", "username", "password"]
+
+
 class FillCredentialsRequest(BaseModel):
     """Fill a login form with a scoped Vaultwarden entry.
 
@@ -81,11 +88,20 @@ class FillCredentialsRequest(BaseModel):
     the response only
     reports success and the current page URL.  Filling does NOT submit: the
     separate human-gated ``/submit`` endpoint remains the only submit path.
+
+    ``fields`` selects what is typed: ``both`` (default) fills username and
+    password on one screen; ``username`` or ``password`` fills just that field
+    so a two-phase login (email first, password on the next screen) can be
+    driven as two calls around the intermediate "continue" click.  The
+    selectors are optional hints — each is the first candidate tried, ahead
+    of the built-in detection fallbacks — and a selector for a field that is
+    not being filled is ignored.
     """
 
     entry: str
-    username_selector: str
-    password_selector: str
+    fields: CredentialFields = "both"
+    username_selector: str | None = None
+    password_selector: str | None = None
 
 
 class WaitRequest(BaseModel):

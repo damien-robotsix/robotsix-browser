@@ -334,6 +334,13 @@ class _FakeFrameLocator:
     async def count(self) -> int:
         return 1 if self._present else 0
 
+    @property
+    def first(self) -> _FakeFrameLocator:
+        return self
+
+    async def is_visible(self) -> bool:
+        return self._present
+
     async def fill(self, value: str, *, timeout: int | None = None) -> None:
         self._frame.fill_log.append((self._frame.url, self._selector, value))
 
@@ -493,6 +500,9 @@ class _ConsentFakeContext:
         self.added.extend(cookies)
 
 
+_TWO_PHASE_URL = "https://account.example.com/signin"
+
+
 class _ConsentRecoveryFakePage:
     """Fake page for fill-credentials consent recovery: main frame + context.
 
@@ -507,16 +517,18 @@ class _ConsentRecoveryFakePage:
         *,
         start_url: str,
         fields_after_navigation: bool = True,
+        present: set[str] | None = None,
     ) -> None:
         self.context = _ConsentFakeContext()
         self.filled: list[tuple[str, str, str]] = []
         self.navigations: list[tuple[str, str | None]] = []
         self._fields_after_navigation = fields_after_navigation
+        self._present = {"#email", "#password"} if present is None else present
         self.main_frame = self._make_frame(start_url)
         self.frames = [self.main_frame]
 
     def _make_frame(self, url: str) -> _FakeFrame:
-        present = {"#email", "#password"} if self._fields_after_navigation else set()
+        present = set(self._present) if self._fields_after_navigation else set()
         return _FakeFrame(url, present=present, fill_log=self.filled)
 
     @property
@@ -531,6 +543,37 @@ class _ConsentRecoveryFakePage:
     def get_by_role(self, role: Any, name: Any = None) -> _FakeFrameLocator:
         # Empty locator → _dismiss_consent_walls finds no button and returns.
         return _FakeFrameLocator(self.main_frame, "get_by_role-empty", False)
+
+
+class _ContinueButtonFakePage(_ConsentRecoveryFakePage):
+    """Identifier screen of a two-phase login: the email field plus a
+    "Continue" button whose name matches the consent-button pattern.  Clicking
+    it (recorded on ``clicks``) advances to the password screen, dropping the
+    email field — exactly what a consent-wall dismissal must not do."""
+
+    def __init__(self) -> None:
+        super().__init__(start_url=_TWO_PHASE_URL, present={"#email"})
+        self.clicks: list[str] = []
+
+    def get_by_role(self, role: Any, name: Any = None) -> Any:
+        page = self
+
+        class _ContinueLocator:
+            async def count(self) -> int:
+                return 1 if role == "button" else 0
+
+            @property
+            def first(self) -> _ContinueLocator:
+                return self
+
+            async def click(self, timeout: int | None = None) -> None:
+                page.clicks.append("Continue")
+                page.main_frame = _FakeFrame(
+                    _TWO_PHASE_URL, present={"#password"}, fill_log=page.filled
+                )
+                page.frames = [page.main_frame]
+
+        return _ContinueLocator()
 
 
 class _FakeCredential:
@@ -666,3 +709,96 @@ async def test_fill_credentials_genuine_miss_still_clean_fails() -> None:
     message = str(excinfo.value)
     assert "username" in message
     assert "not found" in message
+
+
+# --- Two-phase logins: ``fields`` scopes the fill to one screen ------------
+
+
+async def test_fill_credentials_username_only_on_identifier_screen() -> None:
+    """Screen 1 of a two-phase login shows only the email field.  With
+    ``fields="username"`` the username is typed and the (absent) password field
+    is never looked up, so the call succeeds instead of clean-failing."""
+    page = _ConsentRecoveryFakePage(start_url=_TWO_PHASE_URL, present={"#email"})
+    request = FillCredentialsRequest(entry="linkedin.com", fields="username")
+    url = await fill_credentials(page, request, _FakeVault(), login_url=None)
+    assert url == _TWO_PHASE_URL
+    assert page.filled == [(_TWO_PHASE_URL, "#email", "alice@example.com")]
+
+
+async def test_fill_credentials_password_only_on_password_screen() -> None:
+    """Screen 2 shows only the password field: ``fields="password"`` types the
+    password and never tries to bind a username field."""
+    page = _ConsentRecoveryFakePage(start_url=_TWO_PHASE_URL, present={"#password"})
+    request = FillCredentialsRequest(entry="linkedin.com", fields="password")
+    url = await fill_credentials(page, request, _FakeVault(), login_url=None)
+    assert url == _TWO_PHASE_URL
+    assert page.filled == [(_TWO_PHASE_URL, "#password", "s3cr3t")]
+
+
+async def test_fill_credentials_both_still_requires_both_fields() -> None:
+    """The default ``fields="both"`` keeps the single-screen contract: on an
+    identifier-only screen it still clean-fails on the missing password."""
+    page = _ConsentRecoveryFakePage(start_url=_TWO_PHASE_URL, present={"#email"})
+    with pytest.raises(LoginFieldNotFoundError) as excinfo:
+        await fill_credentials(page, _fill_request(), _FakeVault(), login_url=None)
+    assert "password" in str(excinfo.value)
+    # The username was typed before the miss (unchanged ordering).
+    assert page.filled == [(_TWO_PHASE_URL, "#email", "alice@example.com")]
+
+
+async def test_fill_credentials_password_only_miss_names_password() -> None:
+    """``fields="password"`` on a screen without a password field clean-fails
+    naming the password field — never a username error."""
+    page = _ConsentRecoveryFakePage(start_url=_TWO_PHASE_URL, present={"#email"})
+    request = FillCredentialsRequest(entry="linkedin.com", fields="password")
+    with pytest.raises(LoginFieldNotFoundError) as excinfo:
+        await fill_credentials(page, request, _FakeVault(), login_url=None)
+    assert "password" in str(excinfo.value)
+    assert page.filled == []
+
+
+def test_fill_credentials_request_defaults_and_optional_selectors() -> None:
+    """Selectors are optional hints and ``fields`` defaults to ``both``."""
+    request = FillCredentialsRequest(entry="x")
+    assert request.fields == "both"
+    assert request.username_selector is None
+    assert request.password_selector is None
+    with pytest.raises(ValueError):
+        FillCredentialsRequest(entry="x", fields="email")  # type: ignore[arg-type]
+
+
+async def test_fill_detection_without_client_selector_uses_fallbacks() -> None:
+    """With no caller selector the candidate list starts at the known-id tier
+    and the fill still lands via the fallbacks."""
+    frame = _FakeFrame("https://example.com/login", present={"#email"})
+    candidates = _username_candidates(frame, None)
+    # Exactly the caller-selector tier is dropped; nothing else changes.
+    assert len(candidates) == len(_username_candidates(frame, "#user")) - 1
+    await _fill_first_existing(
+        frame, candidates, "alice@example.com", field_label="username", timeout_ms=1
+    )
+    assert frame.fill_log == [
+        ("https://example.com/login", "#email", "alice@example.com")
+    ]
+
+
+async def test_fill_credentials_skips_consent_click_when_field_present() -> None:
+    """On an identifier screen the "Continue" button matches the consent-button
+    pattern.  Because the email field is already present, the best-effort
+    dismissal is skipped: nothing is clicked and the email is typed in place."""
+    page = _ContinueButtonFakePage()
+    request = FillCredentialsRequest(entry="lenovo", fields="username")
+    await fill_credentials(page, request, _FakeVault(), login_url=None)
+    assert page.clicks == []
+    assert page.filled == [(_TWO_PHASE_URL, "#email", "alice@example.com")]
+
+
+async def test_fill_credentials_still_dismisses_wall_when_field_absent() -> None:
+    """When the field is absent the dismissal still runs (regression guard for
+    the existing consent-wall behaviour): the click reveals the password
+    screen, which ``fields="password"`` then binds."""
+    page = _ContinueButtonFakePage()
+    request = FillCredentialsRequest(entry="lenovo", fields="password")
+    await fill_credentials(page, request, _FakeVault(), login_url=None)
+    assert page.clicks == ["Continue"]
+    assert page.filled == [(_TWO_PHASE_URL, "#password", "s3cr3t")]

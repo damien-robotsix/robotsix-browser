@@ -211,13 +211,29 @@ the secret ever passing through the chat agent, transcript, or logs**.
 POST /sessions/{id}/fill-credentials
 {
   "entry": "ovh-portal",          // vault entry name or id
-  "username_selector": "#login",
-  "password_selector": "#password"
+  "fields": "both",               // both (default) | username | password
+  "username_selector": "#login",  // optional CSS hint
+  "password_selector": "#password" // optional CSS hint
 }
 // → 200 {"status": "ok", "url": "..."}   — value NEVER returned
 ```
 
-**Field detection.** The supplied `username_selector` / `password_selector`
+**Two-phase logins.** Many portals (Lenovo, Microsoft, Google, Amazon, …)
+ask for the email / identifier on one screen and the password on the next,
+so both fields are never on the page at once. Drive those as two calls around
+the intermediate click, each scoped with `fields`:
+
+```jsonc
+POST /sessions/{id}/fill-credentials  {"entry": "lenovo", "fields": "username"}
+POST /sessions/{id}/click             {"role": "button", "name": "Continue"}
+POST /sessions/{id}/fill-credentials  {"entry": "lenovo", "fields": "password"}
+```
+
+The vault entry is fetched afresh on each call; the password is still only
+ever typed into the page. The agent never needs to know the email: it is part
+of the vault entry and `fields: "username"` injects it.
+
+**Field detection.** The optional `username_selector` / `password_selector`
 are just the *first* (highest-priority) candidates. The fields are actually
 located via a prioritized fallback list so classic member-login, guest
 sign-in, and locale variant forms all bind when present:
