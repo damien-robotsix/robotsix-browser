@@ -88,11 +88,28 @@ def _describe_target(
 
 
 async def navigate(page: Page, request: NavigateRequest) -> str:
+    """Navigate the page to ``request.url`` and return the resulting URL.
+
+    The URL scheme is validated against :data:`_ALLOWED_SCHEMES` first, so
+    disallowed schemes (notably ``file:``) raise :class:`UnsupportedUrlError`
+    before any navigation happens. ``request.wait_until`` selects the Playwright
+    load milestone to block on (``load`` by default).
+
+    Returns:
+        The page URL after navigation (may differ from the request on redirect).
+    """
     await page.goto(_validate_url(request.url), wait_until=request.wait_until)
     return page.url
 
 
 async def get_state(page: Page) -> StateResponse:
+    """Capture the current page state: ARIA tree plus a full-page screenshot.
+
+    Returns a :class:`~robotsix_browser.models.StateResponse` with the page URL,
+    title, the ARIA accessibility snapshot of ``<body>`` (rendered as YAML), and
+    the full-page screenshot encoded as base64 PNG. This is the primary
+    observation primitive used to reason about the page between actions.
+    """
     tree = await page.locator("body").aria_snapshot()
     screenshot = await page.screenshot(full_page=True)
     return StateResponse(
@@ -104,6 +121,18 @@ async def get_state(page: Page) -> StateResponse:
 
 
 async def click(page: Page, request: ClickRequest) -> str:
+    """Click the element identified by a CSS selector or an ARIA role + name.
+
+    The target is resolved from ``request.selector`` or ``request.role`` /
+    ``request.name`` (the request model requires one of them). A bounded
+    :data:`_CLICK_TIMEOUT_MS` keeps a missing target fast: when nothing matches,
+    the Playwright :class:`TimeoutError` is translated into
+    :class:`SelectorNotFoundError` (mapped to a clean 404) instead of hanging on
+    the 30s global default.
+
+    Returns:
+        The page URL after the click (it may change if the click navigates).
+    """
     locator = _target_locator(
         page, selector=request.selector, role=request.role, name=request.name
     )
@@ -118,11 +147,28 @@ async def click(page: Page, request: ClickRequest) -> str:
 
 
 async def type_text(page: Page, request: TypeRequest) -> str:
+    """Fill the text field at ``request.selector`` with ``request.text``.
+
+    Delegates to Playwright's ``fill``, which clears the field and sets its value
+    in one step. Intended for ``<input>`` / ``<textarea>`` / ``contenteditable``
+    targets.
+
+    Returns:
+        The current page URL.
+    """
     await page.fill(request.selector, request.text)
     return page.url
 
 
 async def select_option(page: Page, request: SelectRequest) -> str:
+    """Choose an ``<option>`` in the ``<select>`` at ``request.selector``.
+
+    The option is chosen by ``request.value`` when provided, otherwise by its
+    visible ``request.label`` (the request model requires one of them).
+
+    Returns:
+        The current page URL.
+    """
     if request.value is not None:
         await page.select_option(request.selector, value=request.value)
     else:
@@ -131,6 +177,16 @@ async def select_option(page: Page, request: SelectRequest) -> str:
 
 
 async def upload(page: Page, request: UploadRequest, filehub: FileHubClient) -> str:
+    """Attach a file-hub file to the ``<input type=file>`` at ``request.selector``.
+
+    Fetches the file identified by ``request.file_id`` from the file-hub service
+    and sets it (name, MIME type and bytes) as the input's selected file. The
+    service never reads from the local filesystem — uploads always originate from
+    file-hub.
+
+    Returns:
+        The current page URL.
+    """
     file = await filehub.fetch(request.file_id)
     payload: FilePayload = {
         "name": file.name,
@@ -142,6 +198,16 @@ async def upload(page: Page, request: UploadRequest, filehub: FileHubClient) -> 
 
 
 async def wait(page: Page, request: WaitRequest) -> str:
+    """Wait for a selector to appear and/or for a page load state.
+
+    When ``request.selector`` is set, waits for that element (bounded by
+    ``request.timeout_ms`` when provided). When ``request.state`` is set, waits
+    for that load milestone (``load`` / ``domcontentloaded`` / ``networkidle``).
+    The request model requires at least one of the two conditions.
+
+    Returns:
+        The current page URL.
+    """
     if request.selector:
         await page.wait_for_selector(request.selector, timeout=request.timeout_ms)
     if request.state is not None:
