@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.14.*"
 
 [manifest]
@@ -797,7 +797,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "playwright", specifier = ">=1.48" },
     { name = "pydantic", specifier = ">=2.9" },
-    { name = "robotsix-config", git = "https://github.com/damien-robotsix/robotsix-config?rev=d29de204db62910f062456e5055fc2fe232e04a9" },
+    { name = "robotsix-config", git = "https://github.com/damien-robotsix/robotsix-config?rev=53607e6b2d4b39218ce9e1f65ea9eef7227dac98" },
     { name = "robotsix-http", git = "https://github.com/damien-robotsix/robotsix-http.git?rev=be2dcd5e58addaf6684ceb67450436c13aae6619" },
     { name = "robotsix-llmio", git = "https://github.com/damien-robotsix/robotsix-llmio?rev=795561d4774e524e1c60eacb28c887ca7cd7884b" },
     { name = "structlog", specifier = ">=24.4" },
@@ -817,8 +817,8 @@ dev = [
 
 [[package]]
 name = "robotsix-config"
-version = "0.1.0"
-source = { git = "https://github.com/damien-robotsix/robotsix-config?rev=d29de204db62910f062456e5055fc2fe232e04a9#d29de204db62910f062456e5055fc2fe232e04a9" }
+version = "0.7.1"
+source = { git = "https://github.com/damien-robotsix/robotsix-config?rev=53607e6b2d4b39218ce9e1f65ea9eef7227dac98#53607e6b2d4b39218ce9e1f65ea9eef7227dac98" }
 dependencies = [
     { name = "pydantic" },
 ]
