@@ -50,6 +50,20 @@ class SessionManager:
         self._browser: Browser | None = None
         self._sessions: dict[str, Session] = {}
         self._lock = asyncio.Lock()
+        self._stopped = False
+
+    async def health_check(self) -> None:
+        """Lightweight readiness probe for the session manager.
+
+        Raises when the manager has already been :meth:`stop`-ped or, if the
+        browser has been launched, when its connection has dropped. Chromium is
+        launched lazily, so a not-yet-started manager is considered healthy
+        (ready to serve) and this never forces a browser launch.
+        """
+        if self._stopped:
+            raise RuntimeError("session manager has been stopped")
+        if self._browser is not None and not self._browser.is_connected():
+            raise RuntimeError("browser connection is not alive")
 
     async def _ensure_browser(self) -> Browser:
         if self._browser is None:
@@ -106,3 +120,4 @@ class SessionManager:
             if self._playwright is not None:
                 await self._playwright.stop()
                 self._playwright = None
+            self._stopped = True

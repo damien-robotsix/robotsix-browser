@@ -72,6 +72,76 @@ def test_health(client: TestClient) -> None:
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_livez_ok_and_fast(client: TestClient) -> None:
+    """/livez returns 200 quickly and runs no dependency checks."""
+    start = time.perf_counter()
+    response = client.get("/livez")
+    elapsed = time.perf_counter() - start
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    # No dependency checks: must return effectively instantly.
+    assert elapsed < 1.0
+
+
+def test_livez_503_after_sigterm(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once SIGTERM flips the flag, /livez reports shutting_down with 503."""
+    monkeypatch.setattr("robotsix_browser.app.is_shutting_down", True)
+    response = client.get("/livez")
+    assert response.status_code == 503
+    assert response.json() == {"status": "shutting_down"}
+
+
+def test_startup_probe_200_after_init(client: TestClient) -> None:
+    """After lifespan startup, /startup reports ready."""
+    response = client.get("/startup")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_startup_probe_503_before_init(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before initialization completes, /startup reports 503."""
+    monkeypatch.setattr("robotsix_browser.app.startup_completed", False)
+    response = client.get("/startup")
+    assert response.status_code == 503
+    assert response.json() == {"status": "starting"}
+
+
+def test_readyz_200_after_init(client: TestClient) -> None:
+    """With all dependencies healthy, /readyz reports ready."""
+    response = client.get("/readyz")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readyz_503_before_startup(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/readyz is 503 until startup_completed, without touching dependencies."""
+    monkeypatch.setattr("robotsix_browser.app.startup_completed", False)
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    assert response.json() == {"status": "starting"}
+
+
+def test_readyz_503_when_vault_unreachable(client: TestClient) -> None:
+    """A dependency whose health check raises forces /readyz to 503."""
+
+    class _UnreachableVault:
+        async def health_check(self) -> None:
+            raise RuntimeError("vault connection refused")
+
+    client.app.dependency_overrides[get_vault] = lambda: _UnreachableVault()
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert any("vault" in failure for failure in body["failures"])
+
+
 def test_unknown_session_returns_404(client: TestClient) -> None:
     response = client.post(
         "/sessions/does-not-exist/navigate", json={"url": "data:text/html,x"}

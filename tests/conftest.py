@@ -69,6 +69,10 @@ class FakeFileHub:
     def __init__(self, files: dict[str, FileHubFile]) -> None:
         self._files = files
 
+    async def health_check(self) -> None:
+        """Readiness stub: the in-memory fake is always reachable."""
+        return None
+
     async def fetch(self, file_id: str) -> FileHubFile:
         return self._files[file_id]
 
@@ -87,6 +91,10 @@ class FakeVault:
 
     def __init__(self, entries: dict[str, VaultCredential]) -> None:
         self._entries = entries
+
+    async def health_check(self) -> None:
+        """Readiness stub: the in-memory fake is always reachable."""
+        return None
 
     async def get_credential(self, entry: str) -> VaultCredential:
         try:

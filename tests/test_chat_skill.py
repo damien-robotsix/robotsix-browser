@@ -23,8 +23,18 @@ COMPONENT_ID = "robotsix-browser"
 _METHOD_PATH_RE = re.compile(r"`([A-Z]+)\s+(/[^`]+?)`")
 
 #: Route path prefixes that are not part of the advertised chat API
-#: (health probe, the skill document itself, and FastAPI's own docs routes).
-_UNDOCUMENTED_PREFIXES = ("/health", "/chat-skill", "/openapi", "/docs", "/redoc")
+#: (health / Kubernetes probes, the skill document itself, and FastAPI's own
+#: docs routes).
+_UNDOCUMENTED_PREFIXES = (
+    "/health",
+    "/livez",
+    "/readyz",
+    "/startup",
+    "/chat-skill",
+    "/openapi",
+    "/docs",
+    "/redoc",
+)
 
 
 def _split_frontmatter(doc: str) -> tuple[dict[str, str], str]:
