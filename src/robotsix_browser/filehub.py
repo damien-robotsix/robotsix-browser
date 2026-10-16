@@ -55,6 +55,24 @@ class FileHubClient:
         # RFC-3986 resolution so no string concatenation reaches the URL.
         return self._base_url.join(f"files/{file_id}")
 
+    async def health_check(self) -> None:
+        """Probe file-hub reachability for the readiness endpoint.
+
+        Issues a single GET against the base URL; *any* HTTP response (even a
+        404) proves the service is reachable, so no status check is applied.
+        Raises :class:`FileHubError` only when the request cannot complete
+        (connection refused, DNS failure, timeout).
+        """
+        client = self._client or httpx.AsyncClient()
+        owns_client = self._client is None
+        try:
+            await client.get(str(self._base_url))
+        except httpx.HTTPError as exc:
+            raise FileHubError(f"file-hub is unreachable: {exc}") from exc
+        finally:
+            if owns_client:
+                await client.aclose()
+
     async def fetch(self, file_id: str) -> FileHubFile:
         """Return the bytes for ``file_id`` from the file-hub."""
         url = self._build_url(file_id)

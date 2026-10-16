@@ -120,6 +120,9 @@ browser context (its own cookies / storage).
 | `POST /sessions/{id}/submit`      | **HUMAN-GATED** final submit / confirm.            |
 | `GET /vault/collections`           | Read-only: collection ids/names the vault key can see. |
 | `GET /vault/items`                 | Read-only: item ids/names the vault key can see (no secrets). |
+| `GET /livez`                       | Liveness probe (no dependency checks). `503` while shutting down. |
+| `GET /readyz`                      | Readiness probe: `200` only after init + all dependencies reachable. |
+| `GET /startup`                     | Startup probe: `503` until initialization completes, then `200`. |
 
 The machine-readable skill document (endpoints, request/response shapes, and
 the confirmation-gated safety contract) is served at `GET /chat-skill` as
@@ -155,6 +158,52 @@ POST /sessions/{id}/click
 A role+name click miss produces the same shape using the accessible-target
 description, e.g. `"role 'button' with name 'Sign in' matched no element"`.
 The miss is detected within a bounded timeout, so the `404` arrives promptly.
+
+### Health & Kubernetes probes
+
+The service follows the standard three-endpoint Kubernetes probe pattern so an
+orchestrator can distinguish *alive*, *ready*, and *started*. The legacy
+`GET /health` endpoint remains for simple uptime checks.
+
+| Probe       | Endpoint   | Meaning                                                        |
+| ----------- | ---------- | ------------------------------------------------------------- |
+| Liveness    | `/livez`   | Is the process alive? No dependency checks (<100ms). Returns `503 {"status": "shutting_down"}` after SIGTERM so new traffic drains. |
+| Readiness   | `/readyz`  | Can this pod serve traffic? `200` only after startup completes **and** every critical dependency (Vault, File Hub, session manager) answers within ~1s. Returns `503` with a `failures` list if any dependency is unreachable; the pod is removed from service endpoints without a restart. |
+| Startup     | `/startup` | Has initialization finished? `503 {"status": "starting"}` until the lifespan hook has built every shared resource, then `200`. |
+
+Example pod spec wiring all three probes (a high `startupProbe.failureThreshold`
+gives slow startups up to five minutes before liveness takes over):
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: robotsix-browser
+spec:
+  containers:
+    - name: robotsix-browser
+      image: robotsix-browser:latest
+      ports:
+        - containerPort: 8000
+      startupProbe:
+        httpGet:
+          path: /startup
+          port: 8000
+        periodSeconds: 10
+        failureThreshold: 30   # up to 5 minutes for slow startup
+      livenessProbe:
+        httpGet:
+          path: /livez
+          port: 8000
+        periodSeconds: 10
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 8000
+        periodSeconds: 10
+        failureThreshold: 3
+```
 
 ### Access & authentication
 

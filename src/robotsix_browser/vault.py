@@ -225,6 +225,18 @@ class VaultClient:
             )
         )
 
+    async def health_check(self) -> None:
+        """Probe Vaultwarden reachability for the readiness endpoint.
+
+        Requests a fresh ``client_credentials`` access token — the lightest
+        authenticated round-trip — without fetching or decrypting any vault
+        contents. Raises :class:`VaultNotConfiguredError` when credentials are
+        absent and :class:`VaultUpstreamError` (or another :class:`VaultError`)
+        when the server is unreachable or rejects the credentials.
+        """
+        self._require_configured()
+        await self._get_token()
+
     async def get_credential(self, entry: str) -> VaultCredential:
         """Return the scoped :class:`VaultCredential` for ``entry``.
 
