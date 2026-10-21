@@ -482,6 +482,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         manager: SessionManager = Depends(get_manager),
         filehub: FileHubClient = Depends(get_filehub),
     ) -> ActionResponse:
+        """Upload a FileHub file into the browser session's file input.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            request: Selector and FileHub file id describing the upload target.
+            manager: Session manager resolved from dependency injection.
+            filehub: FileHub client used to fetch the file contents.
+
+        Returns:
+            ActionResponse carrying the page URL after the upload.
+
+        Raises:
+            HTTPException: 400 if the file id is invalid; 502 if FileHub fails.
+        """
         session = _lookup(manager, session_id)
         try:
             url = await operations.upload(session.page, request, filehub)
