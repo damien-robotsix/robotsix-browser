@@ -143,7 +143,7 @@ jobs:
 
   # Shared workflow-audit gate: actionlint + zizmor audit of workflow files.
   lint-workflows:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@c0be17843fda25e199897042e4b2e06f5127e3b4  # main
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@13e54ef2c331bfb3eb6daac295f49ff310b3d572  # main
     with:
       run-actionlint: true
       run-zizmor: true
