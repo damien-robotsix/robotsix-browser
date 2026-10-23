@@ -875,7 +875,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "robotsix-config", git = "https://github.com/damien-robotsix/robotsix-config?rev=d29de204db62910f062456e5055fc2fe232e04a9" },
     { name = "robotsix-http", git = "https://github.com/damien-robotsix/robotsix-http.git?rev=be2dcd5e58addaf6684ceb67450436c13aae6619" },
-    { name = "robotsix-llmio", git = "https://github.com/damien-robotsix/robotsix-llmio?rev=795561d4774e524e1c60eacb28c887ca7cd7884b" },
+    { name = "robotsix-llmio", git = "https://github.com/damien-robotsix/robotsix-llmio?rev=6986cde3f3b6e905a159ae5bd023866ff44a771f" },
     { name = "structlog", specifier = ">=24.4" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
@@ -911,8 +911,8 @@ dependencies = [
 
 [[package]]
 name = "robotsix-llmio"
-version = "0.7.6"
-source = { git = "https://github.com/damien-robotsix/robotsix-llmio?rev=795561d4774e524e1c60eacb28c887ca7cd7884b#795561d4774e524e1c60eacb28c887ca7cd7884b" }
+version = "0.9.1"
+source = { git = "https://github.com/damien-robotsix/robotsix-llmio?rev=6986cde3f3b6e905a159ae5bd023866ff44a771f#6986cde3f3b6e905a159ae5bd023866ff44a771f" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
