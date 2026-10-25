@@ -40,11 +40,6 @@ modules:
       - src/robotsix_browser/sessions.py
       - src/robotsix_browser/vault.py
 
-  - id: scripts
-    description: CI-invoked repository linters (Dockerfile).
-    paths:
-      - scripts/lint_dockerfile_pins.py
-
   - id: tests
     description: Test suite.
     paths:
@@ -52,7 +47,6 @@ modules:
       - tests/test_api.py
       - tests/test_bwcrypto.py
       - tests/test_chat_skill.py
-      - tests/test_dockerfile_pins.py
       - tests/test_filehub.py
       - tests/test_linkedin_fill_live.py
       - tests/test_logging.py

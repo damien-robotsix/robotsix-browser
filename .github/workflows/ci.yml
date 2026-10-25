@@ -55,9 +55,6 @@ jobs:
       - name: Module registration
         run: uv run robotsix-modules check-registration docs/modules.yaml --root .
 
-      - name: Dockerfile image pins
-        run: uv run python scripts/lint_dockerfile_pins.py Dockerfile
-
       - name: Config schema sync
         run: |
           uv run python -c "
@@ -146,9 +143,10 @@ jobs:
 
   # Shared workflow-audit gate: actionlint + zizmor audit of workflow files.
   lint-workflows:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@13e54ef2c331bfb3eb6daac295f49ff310b3d572  # main
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@6c5841305cc9bdd04f13deb2f05462d041e877be  # v1.2.0
     with:
       run-actionlint: true
       run-zizmor: true
+      dockerfiles: Dockerfile
     permissions:
       contents: read
