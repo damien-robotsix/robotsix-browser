@@ -26,13 +26,13 @@ dependencies = [
 # correlation-id middleware). Override so the whole tree resolves to browser's
 # newer pin instead of downgrading it.
 override-dependencies = [
-    "robotsix-http @ git+https://github.com/damien-robotsix/robotsix-http.git@be2dcd5e58addaf6684ceb67450436c13aae6619",
+    "robotsix-http @ git+https://github.com/damien-robotsix/robotsix-http.git@726254c4e24e56b409dd9f954b097eebf1c1c0a0",
 ]
 
 [tool.uv.sources]
-robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "d29de204db62910f062456e5055fc2fe232e04a9" }
-robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "be2dcd5e58addaf6684ceb67450436c13aae6619" }
-robotsix-llmio = { git = "https://github.com/damien-robotsix/robotsix-llmio", rev = "795561d4774e524e1c60eacb28c887ca7cd7884b" }
+robotsix-config = { git = "https://github.com/damien-robotsix/robotsix-config", rev = "82826f8f56f29629fa2c1dc691245349e8de1e54" }
+robotsix-http = { git = "https://github.com/damien-robotsix/robotsix-http.git", rev = "726254c4e24e56b409dd9f954b097eebf1c1c0a0" }
+robotsix-llmio = { git = "https://github.com/damien-robotsix/robotsix-llmio", rev = "c47468306f8d1a4cf3094f8fa6bd526c2a500eed" }
 robotsix-modules = { git = "https://github.com/damien-robotsix/robotsix-modules", tag = "v0.5.3" }
 
 [project.scripts]
