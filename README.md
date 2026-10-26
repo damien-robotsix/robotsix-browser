@@ -182,7 +182,7 @@ metadata:
 spec:
   containers:
     - name: robotsix-browser
-      image: robotsix-browser:latest
+      image: robotsix-browser:main
       ports:
         - containerPort: 8000
       startupProbe:
