@@ -72,61 +72,40 @@ jobs:
       - name: Tests
         run: uv run pytest
 
-  # Build and publish the deployable container image (with the Playwright /
-  # Chromium runtime baked in by the Dockerfile) to GHCR. central-deploy pulls
-  # `ghcr.io/damien-robotsix/robotsix-browser:main` (see deploy/docker-compose.yml),
-  # so this job produces that pullable tag on every push to main. Runs only
-  # after the test job passes and never on pull requests.
-  publish:
-    name: Publish image
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  # PR-time image gate: build the Dockerfile (plus the fleet hardening layer)
+  # without pushing, smoke-test it and fail on CRITICAL/HIGH fixable CVEs, so a
+  # broken Dockerfile or a new base-image CVE is caught before merge.
+  docker-pr-scan:
+    if: github.event_name == 'pull_request'
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-pr-scan.yml@05d872b062890597dfcdd83d0eeac8918edc3618  # v1.3.0
+    with:
+      # The image CMD starts the uvicorn server (it has no --help), so smoke
+      # the image by importing the app from its venv instead.
+      smoke_command: /app/.venv/bin/python -c "import robotsix_browser.app"
     permissions:
       contents: read
-      packages: write  # push the built image to GHCR (ghcr.io/damien-robotsix/robotsix-browser)
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
+      security-events: write  # SARIF upload to Code Scanning
 
-      - name: Log in to GHCR
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_ACTOR: ${{ github.actor }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
-
-      - name: Build image
-        run: |
-          docker build \
-            -t ghcr.io/damien-robotsix/robotsix-browser:main \
-            -t "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}" \
-            .
-
-      - name: Push image
-        shell: bash
-        run: |
-          # GHCR intermittently fails a docker push mid-stream with "unknown
-          # blob" (a registry-side blob-upload race). The image is already
-          # built and tagged, so a bounded retry is cheap: blobs uploaded by
-          # the failed attempt are reused ("Layer already exists").
-          retry_push() {
-            local tag="$1"
-            local attempt
-            for attempt in 1 2 3 4 5; do
-              if docker push "$tag"; then
-                echo "Pushed ${tag}"
-                return 0
-              fi
-              echo "docker push ${tag} failed (attempt ${attempt}/5); retrying in 10s..."
-              sleep 10
-            done
-            echo "docker push ${tag} failed after 5 attempts" >&2
-            return 1
-          }
-          retry_push ghcr.io/damien-robotsix/robotsix-browser:main
-          retry_push "ghcr.io/damien-robotsix/robotsix-browser:sha-${GITHUB_SHA}"
+  # Build and publish the deployable container image (with the Playwright /
+  # Chromium runtime baked in by the Dockerfile) to GHCR via the shared
+  # docker-release workflow (build, hardening layer, push, Trivy gate + SARIF,
+  # provenance/SBOM attestation). central-deploy pulls
+  # `ghcr.io/damien-robotsix/robotsix-browser:main` (see deploy/docker-compose.yml);
+  # docker-release publishes `:main` (type=ref,event=branch) and
+  # `:sha-<short-sha>` (type=sha). Runs only after the test job passes and
+  # never on pull requests.
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-release.yml@05d872b062890597dfcdd83d0eeac8918edc3618  # v1.3.0
+    with:
+      smoke_command: /app/.venv/bin/python -c "import robotsix_browser.app"
+    permissions:
+      contents: read
+      packages: write         # push the image to GHCR
+      id-token: write         # provenance/SBOM attestation signing
+      attestations: write     # provenance/SBOM attestation signing
+      security-events: write  # Trivy SARIF upload to Code Scanning
 
   # Shared security gate: SAST + dependency CVE audit + secret scan + SBOM.
   # (fleet-wide reusable workflow — the SAST realization of the baseline's
