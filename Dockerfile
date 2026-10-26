@@ -11,6 +11,12 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
+# The image installs everything with uv, so the base image's bundled pip is
+# unused. Remove it: its vendored certifi / msgpack / urllib3 / pkg_resources
+# (setuptools) copies carry CRITICAL/HIGH CVEs flagged by the Trivy image gate.
+RUN python -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.*/site-packages/pip /usr/local/lib/python3.*/site-packages/pip-*.dist-info
+
 # git is required at BUILD time only: robotsix-config is a git dependency in
 # pyproject.toml, and uv shells out to git to fetch it. python:*-slim ships
 # without git, so `uv sync` fails with "Git operation failed" (same lesson as
