@@ -120,6 +120,28 @@ jobs:
     permissions:
       contents: read
 
+  # Diff-scoped dependency review gate on pull requests, via the shared
+  # robotsix-github-workflows dependency-review.yml reusable workflow. It
+  # (a) blocks PRs that add dependencies with known CVEs rated moderate or
+  # higher and (b) denies strong-copyleft licenses incompatible with this
+  # project's MIT license.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/dependency-review.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    with:
+      fail-on-severity: moderate
+      deny-licenses: >-
+        GPL-2.0-only, GPL-2.0-or-later,
+        GPL-3.0-only, GPL-3.0-or-later,
+        AGPL-3.0-only, AGPL-3.0-or-later,
+        LGPL-2.1-only, LGPL-2.1-or-later,
+        LGPL-3.0-only, LGPL-3.0-or-later
+      comment-summary-in-pr: true
+    permissions:
+      contents: read
+      pull-requests: write  # needed for comment-summary-in-pr
+
   # Shared workflow-audit gate: actionlint + zizmor audit of workflow files.
   lint-workflows:
     uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@6c5841305cc9bdd04f13deb2f05462d041e877be  # v1.2.0
