@@ -142,6 +142,17 @@ jobs:
       contents: read
       pull-requests: write  # needed for comment-summary-in-pr
 
+  # Shared Dockerfile lint gate: hadolint over every Dockerfile this repo
+  # builds, failing on warning-level findings or worse. No .hadolint.yaml
+  # exists, so hadolint's defaults apply; no SARIF upload.
+  lint-dockerfile:
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-dockerfile.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    with:
+      dockerfiles: Dockerfile
+      failure-threshold: warning
+    permissions:
+      contents: read
+
   # Shared workflow-audit gate: actionlint + zizmor audit of workflow files.
   lint-workflows:
     uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@6c5841305cc9bdd04f13deb2f05462d041e877be  # v1.2.0
