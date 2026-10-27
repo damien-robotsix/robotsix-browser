@@ -1,0 +1,29 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly baseline-drift scan; CodeQL queries evolve, so re-running on a
+  # schedule catches newly-detectable issues even without code changes.
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Static analysis via the shared robotsix-github-workflows codeql.yml
+  # reusable workflow; results are uploaded to Code Scanning as SARIF.
+  codeql:
+    permissions:
+      actions: read           # needed to read workflow run data
+      contents: read
+      security-events: write  # needed for SARIF upload
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/codeql.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    with:
+      languages: python
