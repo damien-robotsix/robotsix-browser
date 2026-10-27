@@ -21,6 +21,11 @@ RUN python -m pip uninstall -y pip \
 # pyproject.toml, and uv shells out to git to fetch it. python:*-slim ships
 # without git, so `uv sync` fails with "Git operation failed" (same lesson as
 # robotsix-file-hub's Dockerfile).
+# DL3008 (pin apt package versions) is suppressed deliberately: Debian
+# rotates point-release versions out of the archive, so a hard `git=<ver>` pin
+# would break the build on the next security update. git is a build-time
+# helper only, and the base image itself is pinned by digest (Dependabot bumps it).
+# hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
