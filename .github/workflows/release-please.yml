@@ -1,0 +1,49 @@
+name: release-please
+
+# Fleet-wide release automation per robotsix-standards release-please.md.
+# Opens/updates a release PR on every push to main; creates the tag and
+# GitHub Release when that release PR is merged. Release PRs are never
+# auto-merged: the chat agent's periodic release gate merges them.
+#
+# The mechanism — minting the App token, running release-please, syncing
+# uv.lock — lives in the shared workflow so a fix lands once for the fleet.
+# What stays here is what only this repo can decide: when to run.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+  workflow_dispatch:
+
+# Serialise releases per branch. Deliberately NOT cancel-in-progress: a cancel
+# between pushing the release commit and creating the tag would leave the repo
+# half-released.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+# Job-scoped below, not here.
+permissions: {}
+
+jobs:
+  release-please:
+    name: Release Please
+    # Only act on a push, or on the merge of release-please's own release PR.
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'release-please--branches--main')
+    permissions:
+      contents: write       # create the release commit, tag and GitHub Release
+      pull-requests: write  # open and update the release PR
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/release-please.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    with:
+      app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

@@ -17,11 +17,14 @@ modules:
       - .gitignore
       - .github/dependabot.yml
       - .github/workflows/ci.yml
+      - .github/workflows/release-please.yml
+      - release-please-config.json
+      - .release-please-manifest.json
+      - CHANGELOG.md
       - config/config.schema.json
       - deploy/docker-compose.yml
       - docs/modules.yaml
       - vulture_whitelist.py
-      - changelog.d/*.md
 
   - id: browser
     description: The interactive headless-browser HTTP service.
