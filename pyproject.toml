@@ -1,6 +1,6 @@
 [project]
 name = "robotsix-browser"
-version = "0.1.0"
+version = "0.2.0"
 description = "Interactive headless-browser / form-filling HTTP service for the robotsix fleet."
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
