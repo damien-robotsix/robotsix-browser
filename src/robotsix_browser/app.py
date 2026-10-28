@@ -23,7 +23,6 @@ HUMAN SUBMIT-GATE: no endpoint other than ``/submit`` submits a form, and
 
 from __future__ import annotations
 
-import asyncio
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -31,10 +30,11 @@ from types import FrameType
 
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
 from robotsix_http.fastapi import (
+    ProbeState,
     create_chat_skill_router,
     create_correlation_id_middleware,
+    create_health_router,
 )
 
 from robotsix_browser import chat_skill, credential_fill, operations
@@ -82,30 +82,22 @@ logger = structlog.get_logger(__name__)
 #: Kubernetes ``readinessProbe`` timeout even when a dependency hangs.
 READYZ_CHECK_TIMEOUT_S = 1.0
 
-#: ``True`` once the ``lifespan`` startup has finished building every shared
-#: resource. ``/readyz`` and ``/startup`` report 503 until this flips.
-startup_completed = False
 
-#: ``True`` after a SIGTERM is received; flips ``/livez`` (and ``/readyz``) to
-#: 503 so the orchestrator stops routing new traffic while shutdown drains.
-is_shutting_down = False
-
-
-def _install_sigterm_handler() -> None:
+def _install_sigterm_handler(probe_state: ProbeState) -> None:
     """Install a SIGTERM handler that flags graceful shutdown, then chains.
 
-    Setting :data:`is_shutting_down` lets ``/livez`` report ``shutting_down``
-    (503) the moment the orchestrator sends SIGTERM, before uvicorn tears the
-    server down. The previously-installed handler (uvicorn's) is preserved and
-    invoked so the normal shutdown sequence still runs. ``signal.signal`` only
-    works in the main thread, so this is safely skipped when the app starts in
-    a worker thread (e.g. Starlette's ``TestClient``).
+    Calling :meth:`ProbeState.mark_shutting_down` lets ``/livez`` (and
+    ``/readyz``) report ``shutting_down`` (503) the moment the orchestrator
+    sends SIGTERM, before uvicorn tears the server down. The
+    previously-installed handler (uvicorn's) is preserved and invoked so the
+    normal shutdown sequence still runs. ``signal.signal`` only works in the
+    main thread, so this is safely skipped when the app starts in a worker
+    thread (e.g. Starlette's ``TestClient``).
     """
     previous = signal.getsignal(signal.SIGTERM)
 
     def _handler(signum: int, frame: FrameType | None) -> None:
-        global is_shutting_down
-        is_shutting_down = True
+        probe_state.mark_shutting_down()
         if callable(previous):
             previous(signum, frame)
 
@@ -183,24 +175,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     On startup it builds the ``SessionManager``, ``FileHubClient``, and
     ``VaultClient.from_settings`` and stores them on ``app.state``, installs
-    the SIGTERM handler, and sets :data:`startup_completed` so the Kubernetes
-    ``/readyz`` and ``/startup`` probes begin reporting 200. On shutdown it
-    stops the session manager, releasing any open browser sessions.
+    the SIGTERM handler, and marks ``app.state.probe_state`` started so the
+    Kubernetes ``/readyz`` and ``/startup`` probes begin reporting 200. On
+    shutdown it marks the probe state shutting down and stops the session
+    manager, releasing any open browser sessions.
     """
-    global startup_completed, is_shutting_down
-    is_shutting_down = False
-    startup_completed = False
+    probe_state: ProbeState = app.state.probe_state
     settings: Settings = app.state.settings
     app.state.session_manager = SessionManager(
         headless=settings.headless, default_timeout_ms=settings.default_timeout_ms
     )
     app.state.filehub_client = FileHubClient(settings.file_hub_base_url)
     app.state.vault_client = VaultClient.from_settings(settings)
-    _install_sigterm_handler()
-    startup_completed = True
+    _install_sigterm_handler(probe_state)
+    probe_state.mark_started()
     try:
         yield
     finally:
+        probe_state.mark_shutting_down()
         await app.state.session_manager.stop()
 
 
@@ -285,73 +277,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_field=("correlation_id", "request_id"),
     )
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/livez")
-    async def livez() -> JSONResponse:
-        """Kubernetes liveness probe: is the process alive?
-
-        Runs no dependency checks so it returns in well under 100ms. Reports
-        200 ``{"status": "ok"}`` normally and 503 ``{"status":
-        "shutting_down"}`` once a SIGTERM has flipped :data:`is_shutting_down`,
-        letting the orchestrator begin draining.
-        """
-        if is_shutting_down:
-            return JSONResponse(status_code=503, content={"status": "shutting_down"})
-        return JSONResponse(status_code=200, content={"status": "ok"})
-
-    @app.get("/startup")
-    async def startup_probe() -> JSONResponse:
-        """Kubernetes startup probe: has initialization completed?
-
-        Returns 503 ``{"status": "starting"}`` while the ``lifespan`` startup is
-        still building shared resources and 200 ``{"status": "ok"}`` once
-        :data:`startup_completed` is set after the first successful init.
-        """
-        if startup_completed:
-            return JSONResponse(status_code=200, content={"status": "ok"})
-        return JSONResponse(status_code=503, content={"status": "starting"})
-
-    @app.get("/readyz")
-    async def readyz(
-        manager: SessionManager = Depends(get_manager),
-        filehub: FileHubClient = Depends(get_filehub),
-        vault: VaultClient = Depends(get_vault),
-    ) -> JSONResponse:
-        """Kubernetes readiness probe: can this pod serve traffic?
-
-        Returns 503 until :data:`startup_completed`, and 503 again once
-        :data:`is_shutting_down`. Otherwise it probes every critical dependency
-        (Vault, File Hub, session manager) under an independent
-        :data:`READYZ_CHECK_TIMEOUT_S` timeout and returns 503 with a
-        diagnostic ``failures`` list naming any dependency that is unreachable.
-        """
-        if is_shutting_down:
-            return JSONResponse(status_code=503, content={"status": "shutting_down"})
-        if not startup_completed:
-            return JSONResponse(status_code=503, content={"status": "starting"})
-        checks: list[tuple[str, Callable[[], Awaitable[None]]]] = [
-            ("vault", vault.health_check),
-            ("file_hub", filehub.health_check),
-            ("session_manager", manager.health_check),
-        ]
-        failures: list[str] = []
-        for name, check in checks:
-            try:
-                await asyncio.wait_for(check(), timeout=READYZ_CHECK_TIMEOUT_S)
-            except Exception as exc:  # noqa: BLE001 - any failure => not ready
-                logger.warning(
-                    "readiness check failed", dependency=name, error=str(exc)
-                )
-                failures.append(f"{name}: {exc}")
-        if failures:
-            return JSONResponse(
-                status_code=503,
-                content={"status": "not_ready", "failures": failures},
-            )
-        return JSONResponse(status_code=200, content={"status": "ok"})
+    # Shared probe stack: ``/health`` plus the Kubernetes ``/livez``,
+    # ``/startup`` and ``/readyz`` probes, driven by ``probe_state`` (flipped by
+    # the ``lifespan`` hook and the SIGTERM handler).  Readiness checks resolve
+    # the dependencies from ``app.state`` at call time, after lifespan startup.
+    probe_state = ProbeState()
+    app.state.probe_state = probe_state
+    app.include_router(
+        create_health_router(
+            live_path="/livez",
+            ready_path="/readyz",
+            startup_path="/startup",
+            checks={
+                "vault": lambda: app.state.vault_client.health_check(),
+                "file_hub": lambda: app.state.filehub_client.health_check(),
+                "session_manager": lambda: app.state.session_manager.health_check(),
+            },
+            check_timeout_s=READYZ_CHECK_TIMEOUT_S,
+            state=probe_state,
+        )
+    )
 
     app.include_router(
         create_chat_skill_router(chat_skill.chat_skill(), name="robotsix-browser")
