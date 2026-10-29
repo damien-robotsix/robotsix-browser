@@ -15,7 +15,7 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 
-from robotsix_browser.app import get_manager, get_vault
+from robotsix_browser.app import get_filehub, get_manager, get_vault
 from robotsix_browser.vault import VaultNotConfiguredError, VaultUpstreamError
 
 #: Upper bound (seconds) for a selector-miss 404 response.  The /value and
@@ -86,8 +86,8 @@ def test_livez_ok_and_fast(client: TestClient) -> None:
 def test_livez_503_after_sigterm(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Once SIGTERM flips the flag, /livez reports shutting_down with 503."""
-    monkeypatch.setattr("robotsix_browser.app.is_shutting_down", True)
+    """Once SIGTERM flips the probe state, /livez reports shutting_down (503)."""
+    monkeypatch.setattr(client.app.state.probe_state, "_shutting_down", True)
     response = client.get("/livez")
     assert response.status_code == 503
     assert response.json() == {"status": "shutting_down"}
@@ -104,14 +104,21 @@ def test_startup_probe_503_before_init(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Before initialization completes, /startup reports 503."""
-    monkeypatch.setattr("robotsix_browser.app.startup_completed", False)
+    monkeypatch.setattr(client.app.state.probe_state, "_started", False)
     response = client.get("/startup")
     assert response.status_code == 503
     assert response.json() == {"status": "starting"}
 
 
-def test_readyz_200_after_init(client: TestClient) -> None:
+def test_readyz_200_after_init(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """With all dependencies healthy, /readyz reports ready."""
+    # Readiness checks read the clients off ``app.state``; swap in the
+    # fixture's healthy fakes in place of the real upstream clients.
+    overrides = client.app.dependency_overrides
+    monkeypatch.setattr(client.app.state, "vault_client", overrides[get_vault]())
+    monkeypatch.setattr(client.app.state, "filehub_client", overrides[get_filehub]())
     response = client.get("/readyz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -120,25 +127,27 @@ def test_readyz_200_after_init(client: TestClient) -> None:
 def test_readyz_503_before_startup(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """/readyz is 503 until startup_completed, without touching dependencies."""
-    monkeypatch.setattr("robotsix_browser.app.startup_completed", False)
+    """/readyz is 503 until startup completes, without touching dependencies."""
+    monkeypatch.setattr(client.app.state.probe_state, "_started", False)
     response = client.get("/readyz")
     assert response.status_code == 503
     assert response.json() == {"status": "starting"}
 
 
-def test_readyz_503_when_vault_unreachable(client: TestClient) -> None:
+def test_readyz_503_when_vault_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A dependency whose health check raises forces /readyz to 503."""
 
     class _UnreachableVault:
         async def health_check(self) -> None:
             raise RuntimeError("vault connection refused")
 
-    client.app.dependency_overrides[get_vault] = lambda: _UnreachableVault()
+    monkeypatch.setattr(client.app.state, "vault_client", _UnreachableVault())
     response = client.get("/readyz")
     assert response.status_code == 503
     body = response.json()
-    assert body["status"] == "not_ready"
+    assert body["status"] == "unready"
     assert any("vault" in failure for failure in body["failures"])
 
 

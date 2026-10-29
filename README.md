@@ -168,7 +168,7 @@ orchestrator can distinguish *alive*, *ready*, and *started*. The legacy
 | Probe       | Endpoint   | Meaning                                                        |
 | ----------- | ---------- | ------------------------------------------------------------- |
 | Liveness    | `/livez`   | Is the process alive? No dependency checks (<100ms). Returns `503 {"status": "shutting_down"}` after SIGTERM so new traffic drains. |
-| Readiness   | `/readyz`  | Can this pod serve traffic? `200` only after startup completes **and** every critical dependency (Vault, File Hub, session manager) answers within ~1s. Returns `503` with a `failures` list if any dependency is unreachable; the pod is removed from service endpoints without a restart. |
+| Readiness   | `/readyz`  | Can this pod serve traffic? `200` only after startup completes **and** every critical dependency (Vault, File Hub, session manager) answers within ~1s. Returns `503 {"status": "unready", "failures": [...]}` if any dependency is unreachable; the pod is removed from service endpoints without a restart. |
 | Startup     | `/startup` | Has initialization finished? `503 {"status": "starting"}` until the lifespan hook has built every shared resource, then `200`. |
 
 Example pod spec wiring all three probes (a high `startupProbe.failureThreshold`
