@@ -1,0 +1,77 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+        exclude: |
+          (?x)(
+            uv\.lock|
+            \.secrets\.baseline
+          )
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: unsupported
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  # Keep in sync with the shared lint-workflows.yml zizmor gate.
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f  # v1.31.1
+    hooks:
+      - id: zizmor
+        args: [--pedantic, --min-severity, medium]
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: 2eece55955ced00200be9729e9728cb7dacca505  # v2.15.1
+    hooks:
+      - id: hadolint-docker
+        args: [--failure-threshold, warning]
+
+  - repo: https://github.com/damien-robotsix/robotsix-standards
+    rev: v0.10.0
+    hooks:
+      - id: check-secret-str
+        # The hook targets pydantic *config* models (docs/config-standard.md
+        # §3). API request DTOs in models.py carry CSS selectors such as
+        # `password_selector`, which are not secrets, so scope it to config.
+        files: ^src/robotsix_browser/config\.py$
+
+  - repo: local
+    hooks:
+      - id: vulture
+        name: vulture
+        entry: uv run --frozen vulture --ignore-decorators "@field_validator,@model_validator" src/ vulture_whitelist.py
+        language: unsupported
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: modules-registration
+        name: modules registration
+        entry: uv run robotsix-modules check-registration docs/modules.yaml --root .
+        language: unsupported
+        pass_filenames: false
