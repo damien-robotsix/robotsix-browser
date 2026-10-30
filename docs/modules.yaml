@@ -23,6 +23,8 @@ modules:
       - CHANGELOG.md
       - config/config.schema.json
       - deploy/docker-compose.yml
+      - docs/architecture.md
+      - docs/configuration.md
       - docs/modules.yaml
       - vulture_whitelist.py
 
@@ -50,6 +52,7 @@ modules:
       - tests/test_api.py
       - tests/test_bwcrypto.py
       - tests/test_chat_skill.py
+      - tests/test_config.py
       - tests/test_filehub.py
       - tests/test_linkedin_fill_live.py
       - tests/test_logging.py

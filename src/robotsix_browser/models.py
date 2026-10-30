@@ -17,6 +17,8 @@ class OpenSessionRequest(BaseModel):
 
 
 class SessionResponse(BaseModel):
+    """Identifier of an opened (or reused) browser session."""
+
     session_id: str
 
 
@@ -28,6 +30,11 @@ class ActionResponse(BaseModel):
 
 
 class NavigateRequest(BaseModel):
+    """Navigate to ``url`` (``http``/``https``/``data``/``about`` only; else 400).
+
+    ``wait_until`` selects the load event the navigation waits for.
+    """
+
     url: str
     wait_until: WaitUntil = "load"
 
@@ -47,6 +54,8 @@ class ClickRequest(BaseModel):
 
 
 class TypeRequest(BaseModel):
+    """Fill the field matched by ``selector`` with ``text`` (no submit)."""
+
     selector: str
     text: str
 
@@ -119,6 +128,8 @@ class WaitRequest(BaseModel):
 
 
 class ValueResponse(BaseModel):
+    """Current value of the field matched by ``selector`` (404 if none matches)."""
+
     selector: str
     value: str
 

@@ -88,11 +88,20 @@ def _describe_target(
 
 
 async def navigate(page: Page, request: NavigateRequest) -> str:
+    """Navigate the page to ``request.url`` and return the resulting URL.
+
+    Raises :class:`UnsupportedUrlError` (mapped to a 400) when the URL scheme
+    is not in the allowed set (``http``/``https``/``data``/``about``).
+    """
     await page.goto(_validate_url(request.url), wait_until=request.wait_until)
     return page.url
 
 
 async def get_state(page: Page) -> StateResponse:
+    """Capture the page URL, title, ARIA tree and a full-page screenshot.
+
+    Read-only: the page is not modified.
+    """
     tree = await page.locator("body").aria_snapshot()
     screenshot = await page.screenshot(full_page=True)
     return StateResponse(
@@ -104,6 +113,12 @@ async def get_state(page: Page) -> StateResponse:
 
 
 async def click(page: Page, request: ClickRequest) -> str:
+    """Click the CSS-selector or ARIA role/name target and return the page URL.
+
+    Uses a bounded timeout and raises :class:`SelectorNotFoundError` (mapped to
+    a clean 404) when the target matches no element.  Never use this for the
+    final consequential submit — that is :func:`submit`.
+    """
     locator = _target_locator(
         page, selector=request.selector, role=request.role, name=request.name
     )
@@ -118,11 +133,19 @@ async def click(page: Page, request: ClickRequest) -> str:
 
 
 async def type_text(page: Page, request: TypeRequest) -> str:
+    """Fill the field matched by ``request.selector`` with ``request.text``.
+
+    Replaces the field's current value; does not submit the form.
+    """
     await page.fill(request.selector, request.text)
     return page.url
 
 
 async def select_option(page: Page, request: SelectRequest) -> str:
+    """Choose a ``<select>`` option by ``value`` (preferred) or by ``label``.
+
+    Returns the page URL; does not submit the form.
+    """
     if request.value is not None:
         await page.select_option(request.selector, value=request.value)
     else:
@@ -131,6 +154,11 @@ async def select_option(page: Page, request: SelectRequest) -> str:
 
 
 async def upload(page: Page, request: UploadRequest, filehub: FileHubClient) -> str:
+    """Fetch ``request.file_id`` from file-hub and attach it to a file input.
+
+    File-hub failures propagate as :class:`~robotsix_browser.filehub.FileHubError`
+    (502) or :class:`~robotsix_browser.filehub.InvalidFileIdError` (400).
+    """
     file = await filehub.fetch(request.file_id)
     payload: FilePayload = {
         "name": file.name,
@@ -142,6 +170,11 @@ async def upload(page: Page, request: UploadRequest, filehub: FileHubClient) -> 
 
 
 async def wait(page: Page, request: WaitRequest) -> str:
+    """Wait for ``request.selector`` to appear and/or for a page load state.
+
+    The selector wait honours ``request.timeout_ms`` (session default when
+    unset); a timeout propagates as a Playwright ``TimeoutError``.
+    """
     if request.selector:
         await page.wait_for_selector(request.selector, timeout=request.timeout_ms)
     if request.state is not None:
