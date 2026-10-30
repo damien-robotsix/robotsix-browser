@@ -335,3 +335,36 @@ def test_list_items_upstream_failure_surfaces_safe_reason() -> None:
     assert "forbidden" in exc.value.reason
     assert "shh" not in str(exc.value)
     assert "tok-123" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("failing_path", "label"),
+    [
+        ("/identity/connect/token", "token request failed"),
+        ("/identity/accounts/prelogin", "prelogin failed"),
+        ("/api/sync", "vault sync failed"),
+    ],
+)
+def test_upstream_error_body_redacts_secrets_for_each_endpoint(
+    failing_path: str, label: str
+) -> None:
+    """An error body echoing secrets is redacted on every upstream endpoint."""
+    sync = _sync_with_entry()
+    ok_handler = _handler_for(sync)
+    echo = f"upstream echoed shh tok-123 {vf.MASTER_PASSWORD}"
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == failing_path:
+            return httpx.Response(400, text=echo)
+        return ok_handler(request)
+
+    with pytest.raises(VaultUpstreamError, match=label) as exc:
+        asyncio.run(_client(_handler).get_credential("entry-1"))
+    assert exc.value.status_code == 400
+    assert "upstream echoed" in exc.value.reason
+    message = str(exc.value)
+    assert "shh" not in message
+    assert vf.MASTER_PASSWORD not in message
+    if failing_path == "/api/sync":
+        # The bearer token is only known to the client on the sync path.
+        assert "tok-123" not in message

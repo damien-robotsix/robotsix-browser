@@ -332,68 +332,79 @@ class VaultClient:
             raise VaultError("failed to unlock vault") from exc
         return sync, keyring
 
-    async def _get_prelogin(self) -> dict[str, Any]:
-        """Fetch the account KDF parameters (unauthenticated)."""
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        label: str,
+        token: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Send one upstream request and return its decoded JSON body.
+
+        Owns the ``AsyncClient`` / :class:`RetryClient` setup and translates any
+        upstream failure into :class:`VaultUpstreamError`.  Every known secret
+        (the client secret, the master password and — when given — the bearer
+        ``token``) is always redacted from the surfaced error excerpt, so call
+        sites never list secrets by hand.  When ``token`` is given it is also
+        sent as the ``Authorization: Bearer`` header.
+        """
+        if token is not None:
+            kwargs["headers"] = {
+                **kwargs.get("headers", {}),
+                "Authorization": f"Bearer {token}",
+            }
+        secrets = (self._client_secret, self._master_password, token or "")
         async with httpx.AsyncClient(transport=self._transport) as http_client:
             client = RetryClient(http_client)
             try:
-                resp = await client.post(
-                    f"{self._server_url}/identity/accounts/prelogin",
-                    json={"email": self._email},
+                resp = await client.request(
+                    method, f"{self._server_url}{path}", **kwargs
                 )
             except (ExternalHTTPError, httpx.HTTPStatusError) as exc:
                 raise VaultUpstreamError(
                     exc.response.status_code,
-                    _sanitize_upstream_error_body(exc.response, (self._client_secret,)),
-                    "prelogin",
+                    _sanitize_upstream_error_body(exc.response, secrets),
+                    label,
                 ) from exc
         data: dict[str, Any] = resp.json()
         return data
+
+    async def _get_prelogin(self) -> dict[str, Any]:
+        """Fetch the account KDF parameters (unauthenticated)."""
+        return await self._request(
+            "POST",
+            "/identity/accounts/prelogin",
+            label="prelogin",
+            json={"email": self._email},
+        )
 
     async def _get_sync(self, token: str) -> dict[str, Any]:
         """Fetch the full sync payload (profile + ciphers + collections)."""
-        headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(transport=self._transport) as http_client:
-            client = RetryClient(http_client)
-            try:
-                resp = await client.get(
-                    f"{self._server_url}/api/sync",
-                    params={"excludeDomains": "true"},
-                    headers=headers,
-                )
-            except (ExternalHTTPError, httpx.HTTPStatusError) as exc:
-                raise VaultUpstreamError(
-                    exc.response.status_code,
-                    _sanitize_upstream_error_body(
-                        exc.response, (self._client_secret, token)
-                    ),
-                    "vault sync",
-                ) from exc
-        data: dict[str, Any] = resp.json()
-        return data
+        return await self._request(
+            "GET",
+            "/api/sync",
+            label="vault sync",
+            token=token,
+            params={"excludeDomains": "true"},
+        )
 
     async def _get_token(self) -> str:
         """Authenticate via ``client_credentials`` and return an access token."""
-        async with httpx.AsyncClient(transport=self._transport) as http_client:
-            client = RetryClient(http_client)
-            try:
-                resp = await client.post(
-                    f"{self._server_url}/identity/connect/token",
-                    data={
-                        "grant_type": "client_credentials",
-                        "client_id": self._client_id,
-                        "client_secret": self._client_secret,
-                        "scope": "api",
-                        "deviceType": self._device_type,
-                        "deviceIdentifier": self._device_identifier,
-                        "deviceName": self._device_name,
-                    },
-                )
-            except (ExternalHTTPError, httpx.HTTPStatusError) as exc:
-                raise VaultUpstreamError(
-                    exc.response.status_code,
-                    _sanitize_upstream_error_body(exc.response, (self._client_secret,)),
-                    "token request",
-                ) from exc
-            token: str = resp.json()["access_token"]
-            return token
+        data = await self._request(
+            "POST",
+            "/identity/connect/token",
+            label="token request",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "scope": "api",
+                "deviceType": self._device_type,
+                "deviceIdentifier": self._device_identifier,
+                "deviceName": self._device_name,
+            },
+        )
+        token: str = data["access_token"]
+        return token
