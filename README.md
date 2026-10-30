@@ -50,42 +50,14 @@ docker run -p 8000:8000 robotsix-browser
 Configuration lives in a single JSON file located by the `ROBOTSIX_CONFIG_FILE`
 environment variable (default: `config/config.json`).  There is **no**
 environment overlay — the file (plus model defaults) is the sole source of
-truth.  Secrets use pydantic `SecretStr` and are masked in repr / logs.
+truth.  Secrets use pydantic `SecretStr` and are masked in repr / logs.  When
+any required `bw_*` value is blank the credential-fill endpoint responds `503`
+(not configured).
 
-| Field                 | Default              | Type        | Purpose                                   |
-| --------------------- | -------------------- | ----------- | ----------------------------------------- |
-| `file_hub_base_url`   | `http://localhost:8080` | `string` | Base URL of robotsix-file-hub (uploads).  |
-| `headless`            | `true`               | `boolean`   | Launch Chromium headless.                 |
-| `default_timeout_ms`  | `30000`              | `integer`   | Default action timeout.                   |
-| `credential_fill_timeout_ms` | `5000`         | `integer`   | Bounded timeout (ms) for locating a login field during credential fill. |
-| `bw_server_url`       | `""`                 | `string`    | Vaultwarden server URL (Bitwarden API).   |
-| `bw_client_id`        | `""`                 | `SecretStr` | API-key `client_id` (`user.<uuid>`).      |
-| `bw_client_secret`    | `""`                 | `SecretStr` | API-key `client_secret` (masked).         |
-| `bw_email`            | `""`                 | `string`    | Service-account email (vault-unlock KDF salt). |
-| `bw_master_password`  | `""`                 | `SecretStr` | Service-account master password used to unlock/decrypt the vault (masked). |
-| `bw_collection_id`    | `""`                 | `string`    | The single collection the service reads.  |
-
-Example `config.json`:
-
-```json
-{
-  "file_hub_base_url": "http://file-hub:8080",
-  "bw_server_url": "https://vault.example",
-  "bw_client_id": "user.XXXX",
-  "bw_client_secret": "secret",
-  "bw_email": "svc@example.com",
-  "bw_master_password": "master-password",
-  "bw_collection_id": "col-XXXX"
-}
-```
-
-The `BW_*` secrets are written into the config file (permissions `0600`,
-inside a `0700` directory) — never committed, never echoed.  When any
-required value is blank the credential-fill endpoint responds `503` (not
-configured).
-
-Bind location (`ROBOTSIX_BROWSER_HOST` / `ROBOTSIX_BROWSER_PORT`) is set
-via environment variables for uvicorn — these are **not** config values.
+Every field, its default and an example `config.json` are listed in the
+[configuration reference](docs/configuration.md).  Bind location
+(`ROBOTSIX_BROWSER_HOST` / `ROBOTSIX_BROWSER_PORT`) is set via environment
+variables for uvicorn — these are **not** config values.
 
 ## Configuration changes
 
@@ -130,80 +102,20 @@ the confirmation-gated safety contract) is served at `GET /chat-skill` as
 frontmatter carries a kebab-case `name` and one-sentence `description`; the
 markdown body documents the HTTP API and safety rules.
 
-#### Selector misses return a clean `404`
-
-`GET /value` and `POST /click` never raise an unhandled `500` / stack trace
-when their selector (or role + name) matches no element.  Both return a clean,
-structured HTTP `404` whose body names the target that was not found:
-
-```jsonc
-GET /sessions/{id}/value?selector=#does-not-exist
-// → 404
-{
-  "detail": "selector '#does-not-exist' matched no element"
-}
-```
-
-```jsonc
-POST /sessions/{id}/click
-{
-  "selector": "#does-not-exist"
-}
-// → 404
-{
-  "detail": "selector '#does-not-exist' matched no element"
-}
-```
-
-A role+name click miss produces the same shape using the accessible-target
-description, e.g. `"role 'button' with name 'Sign in' matched no element"`.
-The miss is detected within a bounded timeout, so the `404` arrives promptly.
+Selector misses on `GET /value` and `POST /click` return a clean `404` naming
+the target, never a `500` — see
+[Selector misses](docs/architecture.md#selector-misses-return-a-clean-404).
+The request flow through the app factory, session manager, operations,
+credential fill and vault client is described in the
+[architecture overview](docs/architecture.md).
 
 ### Health & Kubernetes probes
 
-The service follows the standard three-endpoint Kubernetes probe pattern so an
-orchestrator can distinguish *alive*, *ready*, and *started*. The legacy
-`GET /health` endpoint remains for simple uptime checks.
-
-| Probe       | Endpoint   | Meaning                                                        |
-| ----------- | ---------- | ------------------------------------------------------------- |
-| Liveness    | `/livez`   | Is the process alive? No dependency checks (<100ms). Returns `503 {"status": "shutting_down"}` after SIGTERM so new traffic drains. |
-| Readiness   | `/readyz`  | Can this pod serve traffic? `200` only after startup completes **and** every critical dependency (Vault, File Hub, session manager) answers within ~1s. Returns `503 {"status": "unready", "failures": [...]}` if any dependency is unreachable; the pod is removed from service endpoints without a restart. |
-| Startup     | `/startup` | Has initialization finished? `503 {"status": "starting"}` until the lifespan hook has built every shared resource, then `200`. |
-
-Example pod spec wiring all three probes (a high `startupProbe.failureThreshold`
-gives slow startups up to five minutes before liveness takes over):
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: robotsix-browser
-spec:
-  containers:
-    - name: robotsix-browser
-      image: robotsix-browser:main
-      ports:
-        - containerPort: 8000
-      startupProbe:
-        httpGet:
-          path: /startup
-          port: 8000
-        periodSeconds: 10
-        failureThreshold: 30   # up to 5 minutes for slow startup
-      livenessProbe:
-        httpGet:
-          path: /livez
-          port: 8000
-        periodSeconds: 10
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: /readyz
-          port: 8000
-        periodSeconds: 10
-        failureThreshold: 3
-```
+`/livez` (liveness), `/readyz` (readiness: startup done and Vault, File Hub and
+session manager reachable) and `/startup` follow the standard Kubernetes probe
+pattern; the legacy `GET /health` remains for simple uptime checks. Probe
+semantics and an example pod spec are in
+[Health & Kubernetes probes](docs/architecture.md#health--kubernetes-probes).
 
 ### Access & authentication
 
@@ -283,54 +195,15 @@ ever typed into the page. The agent never needs to know the email: it is part
 of the vault entry and `fields: "username"` injects it.
 
 **Field detection.** The optional `username_selector` / `password_selector`
-are just the *first* (highest-priority) candidates. The fields are actually
-located via a prioritized fallback list so classic member-login, guest
-sign-in, and locale variant forms all bind when present:
+are only the first candidates tried; a prioritized fallback list covers common
+login-form variants, and a missing field yields a clean `422`. See
+[Credential fill: field detection](docs/architecture.md#credential-fill-field-detection).
 
-- Username/email: caller selector → `#username`, `#session_key`, `#email`,
-  `#login` → `input[type=email]` → `autocomplete="username"|"email"` →
-  `name` containing `user`/`mail`/`login` (case-insensitive) → ARIA
-  role + accessible-name match (`textbox` whose name mentions
-  username/user/email/e-mail/login/sign-in/account/identifier).
-- Password: caller selector → `#password`, `#session_password`, `#passwd` →
-  `input[type=password]` → `autocomplete="current-password"` → `name`
-  containing `pass` (case-insensitive) → ARIA role + accessible-name match
-  (`textbox` whose name mentions password).
-
-If no candidate matches, the endpoint returns a clean 4xx (e.g. `422` with a
-`"login <field> not found"` reason) instead of hanging or returning a 500.
-Vault decrypt/unlock behavior is unchanged.
-
-Security model:
-
-- **Bitwarden API + client credentials.** The service authenticates to the operator's
-  Vaultwarden server (which speaks the Bitwarden JSON API) via
-  `POST /identity/connect/token` with `grant_type=client_credentials`
-  (`client_id` = `user.<uuid>`, `client_secret`). Both values come from the
-  JSON config file (see [Configuration](#configuration)) — never in code,
-  never in the repo.
-- **Sync + unlock/decrypt.** Ciphers are enumerated via `GET /api/sync` (there
-  is no `/api/items` route on Vaultwarden). The sync payload's fields are
-  encrypted "EncString" blobs, so the vault is **unlocked** with the account
-  master password: the master-key-derived symmetric key decrypts the user key,
-  which decrypts the RSA private key, which decrypts the organization key that
-  finally decrypts the entry's `name`/`username`/`password`. This needs
-  `bw_email` (KDF salt) and `bw_master_password` in the config — the
-  `client_credentials` access token alone cannot decrypt vault data. Decryption
-  happens server-side; plaintext secrets are never logged or returned.
-- **Dedicated service account + single collection.** The service is scoped to
-  one provisioned collection. A request for an entry outside that collection
-  fails cleanly with `403`; a missing entry returns `404`. The read-only
-  `GET /vault/collections` and `GET /vault/items` diagnostics return only
-  decrypted **ids and names** — never secret values.
-- **Zero leakage.** At fill-time the entry is fetched and the
-  `username`/`password` are typed **directly into the browser fields**. The
-  secret value is never returned in a response body, never logged, and never
-  surfaced to the agent (`VaultCredential` redacts its password in `repr`).
-- **No 2FA / TOTP.** No TOTP seed is read or stored. If a site ever presents
-  2FA, the flow must pause for an operator-supplied code (not implemented yet).
-- **Human submit-gate preserved.** Filling only fills fields — the separate
-  `POST /sessions/{id}/submit` endpoint remains the only submit path.
+**Security model.** A dedicated Vaultwarden service account scoped to a single
+collection (out-of-scope entry → `403`, missing → `404`); secrets are decrypted
+server-side, typed directly into the page, and never returned or logged; no
+2FA/TOTP; filling never submits. Details:
+[Vaultwarden security model](docs/architecture.md#vaultwarden-security-model).
 
 ## Development
 
