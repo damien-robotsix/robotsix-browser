@@ -97,7 +97,7 @@ jobs:
   publish:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-release.yml@05d872b062890597dfcdd83d0eeac8918edc3618  # v1.3.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-release.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
     with:
       smoke_command: /app/.venv/bin/python -c "import robotsix_browser.app"
     permissions:
