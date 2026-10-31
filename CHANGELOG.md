@@ -4,6 +4,13 @@ All notable changes to this project are documented here. From now on this
 file is written by [release-please](https://github.com/googleapis/release-please)
 from conventional commits — do not edit it by hand.
 
+## [0.2.1](https://github.com/damien-robotsix/robotsix-browser/compare/v0.2.0...v0.2.1) (2026-10-30)
+
+
+### Documentation
+
+* health scan: 3 findings (2026-10-30) (20261030T153955Z-health-scan-3-findings-2026-10-30-f2fe) ([#148](https://github.com/damien-robotsix/robotsix-browser/issues/148)) ([5b2bba6](https://github.com/damien-robotsix/robotsix-browser/commit/5b2bba66cd55949013127fc9d3e14ba67daa98e5))
+
 ## [0.2.0](https://github.com/damien-robotsix/robotsix-browser/compare/v0.1.0...v0.2.0) (2026-10-28)
 
 
