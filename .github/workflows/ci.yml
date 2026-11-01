@@ -111,7 +111,7 @@ jobs:
   # (fleet-wide reusable workflow — the SAST realization of the baseline's
   # "Semgrep (SAST)" security item.)
   security:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-security.yml@c0be17843fda25e199897042e4b2e06f5127e3b4  # main
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-security.yml@8f52551463b98b8845216c644f65ee68d01e95df  # main
     with:
       # This project defines no optional-dependency extras; override the
       # reusable workflow's default `install-extras: tracing` so `uv sync`
