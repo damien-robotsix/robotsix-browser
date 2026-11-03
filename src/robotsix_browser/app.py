@@ -484,8 +484,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> ActionResponse:
         """Inject a scoped Vaultwarden entry into the login form.
 
-        Fetches the entry via the Bitwarden CLI and types username/password
-        directly into the given fields.  The secret is never returned, logged,
+        Fetches the entry via the Bitwarden JSON API (see
+        ``vault.VaultClient``) and types username/password directly into the
+        given fields.  The secret is never returned, logged,
         or surfaced to the agent.  This only fills the form; the human-gated
         ``/submit`` endpoint remains the only submit path.
         """
