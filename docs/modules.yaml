@@ -15,6 +15,7 @@ modules:
       - LICENSE
       - README.md
       - .gitignore
+      - .pre-commit-config.yaml
       - .github/dependabot.yml
       - .github/workflows/ci.yml
       - .github/workflows/codeql.yml
