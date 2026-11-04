@@ -19,6 +19,7 @@ modules:
       - .github/dependabot.yml
       - .github/workflows/ci.yml
       - .github/workflows/codeql.yml
+      - .github/workflows/dependabot-auto-merge.yml
       - .github/workflows/release-please.yml
       - release-please-config.json
       - .release-please-manifest.json
