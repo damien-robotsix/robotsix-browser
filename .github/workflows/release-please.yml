@@ -42,7 +42,7 @@ jobs:
     permissions:
       contents: write       # create the release commit, tag and GitHub Release
       pull-requests: write  # open and update the release PR
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/release-please.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/release-please.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       app-id: ${{ vars.RELEASE_APP_ID }}
     secrets:
