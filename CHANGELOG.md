@@ -4,6 +4,13 @@ All notable changes to this project are documented here. From now on this
 file is written by [release-please](https://github.com/googleapis/release-please)
 from conventional commits — do not edit it by hand.
 
+## [0.2.2](https://github.com/damien-robotsix/robotsix-browser/compare/v0.2.1...v0.2.2) (2026-11-03)
+
+
+### Documentation
+
+* Fix stale 'Bitwarden CLI' wording in fill_credentials route docstring (app.py:487) (20261103T164751Z-fix-stale-bitwarden-cli-wording-in-fill-3305) ([#175](https://github.com/damien-robotsix/robotsix-browser/issues/175)) ([ef9a6f3](https://github.com/damien-robotsix/robotsix-browser/commit/ef9a6f37246f39f17f391a32c33a66ee653b27c9))
+
 ## [0.2.1](https://github.com/damien-robotsix/robotsix-browser/compare/v0.2.0...v0.2.1) (2026-10-30)
 
 
