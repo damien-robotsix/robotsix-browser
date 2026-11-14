@@ -77,7 +77,7 @@ jobs:
   # broken Dockerfile or a new base-image CVE is caught before merge.
   docker-pr-scan:
     if: github.event_name == 'pull_request'
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-pr-scan.yml@05d872b062890597dfcdd83d0eeac8918edc3618  # v1.3.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-pr-scan.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       # The image CMD starts the uvicorn server (it has no --help), so smoke
       # the image by importing the app from its venv instead.
@@ -97,7 +97,7 @@ jobs:
   publish:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-release.yml@05d872b062890597dfcdd83d0eeac8918edc3618  # v1.3.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/docker-release.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       smoke_command: /app/.venv/bin/python -c "import robotsix_browser.app"
     permissions:
@@ -111,7 +111,7 @@ jobs:
   # (fleet-wide reusable workflow — the SAST realization of the baseline's
   # "Semgrep (SAST)" security item.)
   security:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-security.yml@c0be17843fda25e199897042e4b2e06f5127e3b4  # main
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-security.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       # This project defines no optional-dependency extras; override the
       # reusable workflow's default `install-extras: tracing` so `uv sync`
@@ -128,7 +128,7 @@ jobs:
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/dependency-review.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/dependency-review.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       fail-on-severity: moderate
       deny-licenses: >-
@@ -146,7 +146,7 @@ jobs:
   # builds, failing on warning-level findings or worse. No .hadolint.yaml
   # exists, so hadolint's defaults apply; no SARIF upload.
   lint-dockerfile:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-dockerfile.yml@47523e8aa2d34d41da060d29b57f75ab262cb840  # v1.4.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-dockerfile.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       dockerfiles: Dockerfile
       failure-threshold: warning
@@ -155,7 +155,7 @@ jobs:
 
   # Shared workflow-audit gate: actionlint + zizmor audit of workflow files.
   lint-workflows:
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@6c5841305cc9bdd04f13deb2f05462d041e877be  # v1.2.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/lint-workflows.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
     with:
       run-actionlint: true
       run-zizmor: true
