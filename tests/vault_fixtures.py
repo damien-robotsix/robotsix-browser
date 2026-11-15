@@ -32,7 +32,7 @@ from robotsix_browser.bwcrypto import (
     stretch_master_key,
 )
 
-MASTER_PASSWORD = "correct horse battery staple"  # noqa: S105 - test fixture
+MASTER_PASSWORD = "correct horse battery staple"
 EMAIL = "svc@example.com"
 # Deliberately low so the PBKDF2 derivation stays fast in the test suite.
 KDF_ITERATIONS = 5000
@@ -60,7 +60,7 @@ def make_rsa_enc_string(public_key: rsa.RSAPublicKey, plaintext: bytes) -> str:
     """Encrypt ``plaintext`` into a type-4 (RSA-2048 OAEP-SHA1) EncString."""
     ct = public_key.encrypt(
         plaintext,
-        padding.OAEP(mgf=padding.MGF1(SHA1()), algorithm=SHA1(), label=None),
+        padding.OAEP(mgf=padding.MGF1(SHA1()), algorithm=SHA1(), label=None),  # noqa: S303
     )
     return f"4.{_b64(ct)}"
 

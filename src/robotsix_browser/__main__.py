@@ -8,7 +8,7 @@ import uvicorn
 
 
 def main() -> None:
-    host = os.environ.get("ROBOTSIX_BROWSER_HOST", "0.0.0.0")
+    host = os.environ.get("ROBOTSIX_BROWSER_HOST", "0.0.0.0")  # noqa: S104 - container service
     port = int(os.environ.get("ROBOTSIX_BROWSER_PORT", "8000"))
     uvicorn.run("robotsix_browser.app:create_app", host=host, port=port, factory=True)
 
