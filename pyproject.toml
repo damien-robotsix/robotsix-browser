@@ -63,7 +63,9 @@ target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+select = ["E", "F", "I", "W", "S", "UP", "B", "SIM", "C4"]
+extend-select = ["LOG", "G", "ERA", "PGH", "RUF", "PT"]
+ignore = ["PT006"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection markers are called in argument defaults by design.
@@ -73,6 +75,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 # The chat-skill module embeds a markdown document whose example request/
 # response lines are naturally longer than the code line limit.
 "src/robotsix_browser/chat_skill.py" = ["E501"]
+"tests/**" = ["S101", "S105", "S106", "S108"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

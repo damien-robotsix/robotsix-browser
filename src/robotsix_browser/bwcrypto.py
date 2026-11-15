@@ -133,7 +133,7 @@ def decrypt_rsa(enc: str, private_key: rsa.RSAPrivateKey) -> bytes:
     if not parts:
         raise VaultCryptoError("empty RSA EncString")
     if enc_type == 4:
-        algo: SHA1 | SHA256 = SHA1()
+        algo: SHA1 | SHA256 = SHA1()  # noqa: S303 - Bitwarden type-4 format
     elif enc_type == 6:
         algo = SHA256()
     else:

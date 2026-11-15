@@ -31,7 +31,7 @@ def _no_retry_backoff_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_structlog_root_handler() -> Iterator[None]:
+def _reset_structlog_root_handler() -> None:
     """Drop the shared structlog root handler between tests.
 
     ``robotsix_llmio.setup_structlog`` is idempotent: it keeps a single marked
@@ -47,7 +47,6 @@ def _reset_structlog_root_handler() -> Iterator[None]:
         # Marker attribute set by robotsix_llmio.setup_structlog on its handler.
         if getattr(handler, "_robotsix_llmio_configured", False):
             root.removeHandler(handler)
-    yield
 
 
 @pytest.fixture(scope="session")
@@ -78,7 +77,7 @@ class FakeFileHub:
 
 
 #: The secret used by :class:`FakeVault`; tests assert it never leaks.
-FAKE_SECRET = "s3cr3t-p@ssw0rd-never-leak"  # noqa: S105 - test fixture value
+FAKE_SECRET = "s3cr3t-p@ssw0rd-never-leak"
 
 
 class FakeVault:

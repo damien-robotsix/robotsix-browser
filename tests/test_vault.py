@@ -22,7 +22,7 @@ from robotsix_browser.vault import (
     _extract_credential,
 )
 
-_SECRET = "top-secret-value"  # noqa: S105 - test fixture value
+_SECRET = "top-secret-value"
 _COLLECTION = "col-123"
 _ORG = "org-1"
 

@@ -763,7 +763,7 @@ def test_fill_credentials_request_defaults_and_optional_selectors() -> None:
     assert request.fields == "both"
     assert request.username_selector is None
     assert request.password_selector is None
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="fields"):
         FillCredentialsRequest(entry="x", fields="email")  # type: ignore[arg-type]
 
 

@@ -216,7 +216,7 @@ async def _dismiss_consent_walls(page: Page) -> None:
                 continue
             await locator.first.click(timeout=_CONSENT_DISMISS_TIMEOUT_MS)
             return
-        except Exception:
+        except Exception:  # noqa: S112 - best-effort dismissal
             continue
 
 
