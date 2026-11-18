@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 
 import pytest
-
 import vault_fixtures as vf
+
 from robotsix_browser import bwcrypto
 from robotsix_browser.bwcrypto import (
     KDF_PBKDF2,

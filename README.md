@@ -55,7 +55,7 @@ any required `bw_*` value is blank the credential-fill endpoint responds `503`
 (not configured).
 
 Every field, its default and an example `config.json` are listed in the
-[configuration reference](docs/configuration.md).  Bind location
+[configuration reference](docs/browser/configuration.md).  Bind location
 (`ROBOTSIX_BROWSER_HOST` / `ROBOTSIX_BROWSER_PORT`) is set via environment
 variables for uvicorn — these are **not** config values.
 
@@ -104,10 +104,10 @@ markdown body documents the HTTP API and safety rules.
 
 Selector misses on `GET /value` and `POST /click` return a clean `404` naming
 the target, never a `500` — see
-[Selector misses](docs/architecture.md#selector-misses-return-a-clean-404).
+[Selector misses](docs/browser/architecture.md#selector-misses-return-a-clean-404).
 The request flow through the app factory, session manager, operations,
 credential fill and vault client is described in the
-[architecture overview](docs/architecture.md).
+[architecture overview](docs/browser/architecture.md).
 
 ### Health & Kubernetes probes
 
@@ -115,7 +115,7 @@ credential fill and vault client is described in the
 session manager reachable) and `/startup` follow the standard Kubernetes probe
 pattern; the legacy `GET /health` remains for simple uptime checks. Probe
 semantics and an example pod spec are in
-[Health & Kubernetes probes](docs/architecture.md#health--kubernetes-probes).
+[Health & Kubernetes probes](docs/browser/architecture.md#health--kubernetes-probes).
 
 ### Access & authentication
 
@@ -197,13 +197,13 @@ of the vault entry and `fields: "username"` injects it.
 **Field detection.** The optional `username_selector` / `password_selector`
 are only the first candidates tried; a prioritized fallback list covers common
 login-form variants, and a missing field yields a clean `422`. See
-[Credential fill: field detection](docs/architecture.md#credential-fill-field-detection).
+[Credential fill: field detection](docs/browser/architecture.md#credential-fill-field-detection).
 
 **Security model.** A dedicated Vaultwarden service account scoped to a single
 collection (out-of-scope entry → `403`, missing → `404`); secrets are decrypted
 server-side, typed directly into the page, and never returned or logged; no
 2FA/TOTP; filling never submits. Details:
-[Vaultwarden security model](docs/architecture.md#vaultwarden-security-model).
+[Vaultwarden security model](docs/browser/architecture.md#vaultwarden-security-model).
 
 ## Development
 

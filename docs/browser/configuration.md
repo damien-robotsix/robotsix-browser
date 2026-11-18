@@ -10,7 +10,7 @@ model in `src/robotsix_browser/config.py` and loaded by `get_settings()` via
   sole source of truth. A field omitted from the file keeps its default.
 - **Schema.** The committed JSON Schema is
   [`config/config.schema.json`](../config/config.schema.json). This page is
-  checked against it by `tests/test_config.py`: every schema field must
+  checked against it by `tests/browser/test_config.py`: every schema field must
   appear in the table below with its schema default.
 - **Secrets.** Fields typed `SecretStr` are masked (`**********`) in `repr`,
   `str` and `model_dump_json()` output, so they never leak into logs.
@@ -68,4 +68,4 @@ via environment variables for uvicorn — these are **not** `Settings` fields.
 When adding or changing a field on `Settings`, regenerate
 `config/config.schema.json` **in the same commit** (see
 [Configuration changes](../README.md#configuration-changes)) and update the
-table above; CI and `tests/test_config.py` fail otherwise.
+table above; CI and `tests/browser/test_config.py` fail otherwise.

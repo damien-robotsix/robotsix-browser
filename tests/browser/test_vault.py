@@ -8,8 +8,8 @@ from urllib.parse import parse_qs
 
 import httpx
 import pytest
-
 import vault_fixtures as vf
+
 from robotsix_browser.config import Settings
 from robotsix_browser.vault import (
     EntryNotFoundError,

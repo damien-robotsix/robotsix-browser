@@ -26,8 +26,6 @@ modules:
       - CHANGELOG.md
       - config/config.schema.json
       - deploy/docker-compose.yml
-      - docs/architecture.md
-      - docs/configuration.md
       - docs/modules.yaml
       - vulture_whitelist.py
 
@@ -47,23 +45,21 @@ modules:
       - src/robotsix_browser/operations.py
       - src/robotsix_browser/sessions.py
       - src/robotsix_browser/vault.py
-
-  - id: tests
-    description: Test suite.
-    paths:
-      - tests/conftest.py
-      - tests/test_api.py
-      - tests/test_bwcrypto.py
-      - tests/test_chat_skill.py
-      - tests/test_config.py
-      - tests/test_filehub.py
-      - tests/test_linkedin_fill_live.py
-      - tests/test_logging.py
-      - tests/test_models.py
-      - tests/test_operations.py
-      - tests/test_sessions.py
-      - tests/test_vault.py
-      - tests/vault_fixtures.py
+      - tests/browser/conftest.py
+      - tests/browser/vault_fixtures.py
+      - tests/browser/test_api.py
+      - tests/browser/test_bwcrypto.py
+      - tests/browser/test_chat_skill.py
+      - tests/browser/test_config.py
+      - tests/browser/test_filehub.py
+      - tests/browser/test_linkedin_fill_live.py
+      - tests/browser/test_logging.py
+      - tests/browser/test_models.py
+      - tests/browser/test_operations.py
+      - tests/browser/test_sessions.py
+      - tests/browser/test_vault.py
+      - docs/browser/architecture.md
+      - docs/browser/configuration.md
 
 # Tracked files intentionally not registered as module content. The
 # completeness check treats these as covered so they do not trip the

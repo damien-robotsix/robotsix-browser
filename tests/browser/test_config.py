@@ -82,12 +82,12 @@ def test_get_settings_loads_json_config_file(
 
 
 def test_configuration_reference_lists_every_schema_field() -> None:
-    """``docs/configuration.md`` must document every schema field + default."""
-    root = Path(__file__).resolve().parent.parent
+    """``docs/browser/configuration.md`` must document every schema field + default."""
+    root = Path(__file__).resolve().parent.parent.parent
     schema = json.loads(
         (root / "config" / "config.schema.json").read_text(encoding="utf-8")
     )
-    doc = (root / "docs" / "configuration.md").read_text(encoding="utf-8")
+    doc = (root / "docs" / "browser" / "configuration.md").read_text(encoding="utf-8")
 
     for field, spec in schema["properties"].items():
         default = json.dumps(spec["default"])
