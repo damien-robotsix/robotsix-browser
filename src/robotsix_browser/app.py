@@ -395,6 +395,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: ClickRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
+        """Click the target selector in the session's page.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            request: Selector describing the click target.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            ActionResponse carrying the page URL after the click.
+
+        Raises:
+            HTTPException: 404 when the selector is not found.
+        """
         session = _lookup(manager, session_id)
         try:
             url = await operations.click(session.page, request)
@@ -467,6 +480,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selector: str = Query(..., description="CSS selector of the field to read"),
         manager: SessionManager = Depends(get_manager),
     ) -> ValueResponse:
+        """Read the current value of a CSS field in the session's page.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            selector: CSS selector of the field to read.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            ValueResponse carrying the selector and its current value.
+
+        Raises:
+            HTTPException: 404 when the selector is not found.
+        """
         session = _lookup(manager, session_id)
         try:
             current = await operations.read_value(session.page, selector)
