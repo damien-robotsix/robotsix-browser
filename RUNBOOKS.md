@@ -11,7 +11,7 @@ network-enabled host.
   [`src/robotsix_browser/operations.py:129`](src/robotsix_browser/operations.py)
   (`_LINKEDIN_CONSENT_COOKIES`) can only be validated against the live
   `linkedin.com` `/login` page. The hermetic tests in
-  `tests/test_linkedin_fill_live.py` and `tests/test_operations.py` use
+  `tests/browser/test_linkedin_fill_live.py` and `tests/browser/test_operations.py` use
   `data:` URLs and mocked pages, so they exercise the fill logic but **cannot**
   confirm the cookie values still suppress the consent redirect.
 - **Any other test that navigates to a live external site** falls under the

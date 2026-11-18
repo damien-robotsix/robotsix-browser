@@ -2,7 +2,7 @@
 
 ``SessionManager``'s Playwright/Chromium I/O is faked so the lifecycle logic is
 exercised in CI without a browser binary.  The HTTP-level tests in
-``tests/test_api.py`` that drive real headless Chromium are skipped when no
+``tests/browser/test_api.py`` that drive real headless Chromium are skipped when no
 browser is installed, leaving the manager's state transitions untested there.
 """
 
