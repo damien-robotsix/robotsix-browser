@@ -21,7 +21,7 @@ jobs:
   # the workflow's pre-test-command / extra-check-command hooks.
   test:
     name: Tests
-    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-ci.yml@86a722f2938c1dda343bbf8d3c5989613cbf1794  # v1.5.0
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-ci.yml@380b1ab94ea1dc3e5a3e99f2223357bdb4a28b14  # current default branch (declares pre-test-command / extra-check-command)
     with:
       # This project defines no optional-dependency extras; override the
       # reusable workflow's default `install-extras: tracing` so `uv sync
