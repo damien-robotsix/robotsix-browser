@@ -13,64 +13,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Shared Python CI gate (lint, typecheck, deptry, vulture, bandit,
+  # dependency audit, and pytest with a hard 80% coverage floor) via the
+  # fleet reusable python-ci.yml. Replaces the previous hand-rolled inline
+  # test job; the repo-specific bits (Playwright browser install, module
+  # registration and config-schema drift checks) are passed back in through
+  # the workflow's pre-test-command / extra-check-command hooks.
   test:
     name: Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    uses: damien-robotsix/robotsix-github-workflows/.github/workflows/python-ci.yml@380b1ab94ea1dc3e5a3e99f2223357bdb4a28b14  # current default branch (declares pre-test-command / extra-check-command)
+    with:
+      # This project defines no optional-dependency extras; override the
+      # reusable workflow's default `install-extras: tracing` so `uv sync
+      # --frozen` does not fail on an undefined extra.
+      install-extras: ""
+      cov-package: robotsix_browser
+      coverage-threshold: 80
+      # The test suite drives a real Playwright Chromium; install it (with its
+      # OS deps) after the editable install.
+      pre-test-command: uv run playwright install --with-deps chromium
+      # Repo-specific gates the shared workflow does not know about: module
+      # registration and config-schema drift (config/config.schema.json must
+      # match robotsix_browser.config.Settings).
+      extra-check-command: |-
+        uv run robotsix-modules check-registration docs/modules.yaml --root . &&
+        uv run python -c "
+        from robotsix_browser.config import Settings
+        from robotsix_config import config_schema_json
+        expected = config_schema_json(Settings)
+        with open('config/config.schema.json') as f:
+            actual = f.read()
+        if actual != expected:
+            print('config/config.schema.json is out of date.')
+            print('Run: uv run python -c \"from robotsix_browser.config import Settings; from robotsix_config import config_schema_json; open(\\\"config/config.schema.json\\\",\\\"w\\\").write(config_schema_json(Settings))\"')
+            raise SystemExit(1)
+        "
+      # Keep the dead-code gate from the old inline job (the shared workflow
+      # ships it disabled by default). The --ignore-decorators drop keeps
+      # pydantic field/model validators (invoked by the framework, never by
+      # name) from being flagged as unused.
+      run-vulture: true
+      vulture-args: --ignore-decorators "@field_validator,@model_validator" src/ vulture_whitelist.py
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa  # v10.3.1
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.14
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Install Playwright Chromium
-        run: uv run playwright install --with-deps chromium
-
-      - name: Lint
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
-      - name: Type check
-        run: uv run mypy
-
-      - name: Dependency hygiene
-        run: uv run deptry .
-
-      - name: Dead code
-        run: uv run vulture --ignore-decorators "@field_validator,@model_validator" src/ vulture_whitelist.py
-
-      - name: Module registration
-        run: uv run robotsix-modules check-registration docs/modules.yaml --root .
-
-      - name: Config schema sync
-        run: |
-          uv run python -c "
-          from robotsix_browser.config import Settings
-          from robotsix_config import config_schema_json
-          expected = config_schema_json(Settings)
-          with open('config/config.schema.json') as f:
-              actual = f.read()
-          if actual != expected:
-              print('config/config.schema.json is out of date.')
-              print('Run: uv run python -c \"from robotsix_browser.config import Settings; from robotsix_config import config_schema_json; open(\\\"config/config.schema.json\\\",\\\"w\\\").write(config_schema_json(Settings))\"')
-              raise SystemExit(1)
-          "
-
-      - name: Tests
-        run: uv run pytest
 
   # PR-time image gate: build the Dockerfile (plus the fleet hardening layer)
   # without pushing, smoke-test it and fail on CRITICAL/HIGH fixable CVEs, so a
