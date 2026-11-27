@@ -275,52 +275,74 @@ def _client_candidate(scope: Any, client_selector: str | None) -> list[Locator]:
     return [] if client_selector is None else [scope.locator(client_selector)]
 
 
-def _username_candidates(scope: Any, client_selector: str | None) -> list[Locator]:
-    """Prioritized candidate locators for the username / email input.
+def _field_candidates(
+    scope: Any,
+    client_selector: str | None,
+    extra_locators: list[Locator],
+    aria_name: re.Pattern[str],
+) -> list[Locator]:
+    """Prioritized candidate locators for a single login-field input.
 
-    Order: the caller-supplied CSS selector (when given), the classic LinkedIn
-    member-login and guest sign-in ids, ``type=email``, then structural attributes
-    (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
-    matching — so detection does not rely on hard-coded CSS ids alone.
-    ``scope`` is the frame (top-level or child) being searched.
+    Renders the shared candidate sequence used by both username / email and
+    password detection: the caller-supplied CSS selector (when given) first,
+    then the caller's structural id / attribute selectors, and finally ARIA
+    role + accessible-name matching — so detection does not rely on hard-coded
+    CSS ids alone.  ``scope`` is the frame (top-level or child) being searched.
     """
     aria_role = cast(Any, "textbox")
     return [
         *_client_candidate(scope, client_selector),
-        scope.locator("#username"),
-        scope.locator("#session_key"),
-        scope.locator("#email"),
-        scope.locator("#login"),
-        scope.locator("input[type='email']"),
-        scope.locator("input[autocomplete='username']"),
-        scope.locator("input[autocomplete='email']"),
-        scope.locator("input[name*='user' i]"),
-        scope.locator("input[name*='mail' i]"),
-        scope.locator("input[name*='login' i]"),
-        scope.get_by_role(aria_role, name=_USERNAME_NAME),
+        *extra_locators,
+        scope.get_by_role(aria_role, name=aria_name),
     ]
+
+
+def _username_candidates(scope: Any, client_selector: str | None) -> list[Locator]:
+    """Prioritized candidate locators for the username / email input.
+
+    Order: the classic LinkedIn member-login and guest sign-in ids,
+    ``type=email``, then structural attributes (``name`` / ``autocomplete``),
+    and finally ARIA role + accessible-name matching.
+    """
+    return _field_candidates(
+        scope,
+        client_selector,
+        [
+            scope.locator("#username"),
+            scope.locator("#session_key"),
+            scope.locator("#email"),
+            scope.locator("#login"),
+            scope.locator("input[type='email']"),
+            scope.locator("input[autocomplete='username']"),
+            scope.locator("input[autocomplete='email']"),
+            scope.locator("input[name*='user' i]"),
+            scope.locator("input[name*='mail' i]"),
+            scope.locator("input[name*='login' i]"),
+        ],
+        _USERNAME_NAME,
+    )
 
 
 def _password_candidates(scope: Any, client_selector: str | None) -> list[Locator]:
     """Prioritized candidate locators for the password input.
 
-    Order: the caller-supplied CSS selector (when given), the classic LinkedIn
-    member-login and guest sign-in ids, ``type=password``, then structural attributes
-    (``name`` / ``autocomplete``), and finally ARIA role + accessible-name
-    matching — so detection does not rely on hard-coded CSS ids alone.
-    ``scope`` is the frame (top-level or child) being searched.
+    Order: the classic LinkedIn member-login and guest sign-in ids,
+    ``type=password``, then structural attributes (``name`` / ``autocomplete``),
+    and finally ARIA role + accessible-name matching.
     """
-    aria_role = cast(Any, "textbox")
-    return [
-        *_client_candidate(scope, client_selector),
-        scope.locator("#password"),
-        scope.locator("#session_password"),
-        scope.locator("#passwd"),
-        scope.locator("input[type='password']"),
-        scope.locator("input[autocomplete='current-password']"),
-        scope.locator("input[name*='pass' i]"),
-        scope.get_by_role(aria_role, name=_PASSWORD_NAME),
-    ]
+    return _field_candidates(
+        scope,
+        client_selector,
+        [
+            scope.locator("#password"),
+            scope.locator("#session_password"),
+            scope.locator("#passwd"),
+            scope.locator("input[type='password']"),
+            scope.locator("input[autocomplete='current-password']"),
+            scope.locator("input[name*='pass' i]"),
+        ],
+        _PASSWORD_NAME,
+    )
 
 
 async def _fill_first_existing(

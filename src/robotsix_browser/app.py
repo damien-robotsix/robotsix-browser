@@ -346,6 +346,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: OpenSessionRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> SessionResponse:
+        """Open a browser session and return its identifier.
+
+        Args:
+            request: Session identifier to open or reuse.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            SessionResponse carrying the session identifier.
+        """
         session = await manager.open_session(request.session_id)
         return SessionResponse(session_id=session.id)
 
@@ -354,6 +363,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: str,
         manager: SessionManager = Depends(get_manager),
     ) -> dict[str, str]:
+        """Close an active browser session.
+
+        Args:
+            session_id: Identifier of the session to close.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            A ``{"status": "closed"}`` confirmation mapping.
+        """
         await manager.close_session(session_id)
         return {"status": "closed"}
 
@@ -386,6 +404,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: str,
         manager: SessionManager = Depends(get_manager),
     ) -> StateResponse:
+        """Capture the session page's current state: URL, title, ARIA
+        accessibility tree and a full-page screenshot.
+
+        A read-only snapshot delegated to ``operations.get_state``.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            StateResponse carrying the ARIA tree and screenshot.
+        """
         session = _lookup(manager, session_id)
         return await operations.get_state(session.page)
 
@@ -408,6 +438,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: TypeRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
+        """Fill the field matched by ``request.selector`` with ``request.text``.
+
+        Replaces the field's current value; does not submit the form.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            request: CSS selector and replacement text to type.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            ActionResponse carrying the page URL after the keystrokes.
+        """
         session = _lookup(manager, session_id)
         return ActionResponse(url=await operations.type_text(session.page, request))
 
@@ -417,6 +459,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: SelectRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
+        """Choose a ``<select>`` option by value (preferred) or by label.
+
+        Does not submit the form.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            request: Selector plus the option ``value`` or ``label`` to pick.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            ActionResponse carrying the page URL after the selection.
+        """
         session = _lookup(manager, session_id)
         return ActionResponse(url=await operations.select_option(session.page, request))
 
@@ -458,6 +512,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: WaitRequest,
         manager: SessionManager = Depends(get_manager),
     ) -> ActionResponse:
+        """Wait for ``request.selector`` to appear and/or for a page load
+        state, then return the page URL.
+
+        The selector wait honours ``request.timeout_ms`` (session default when
+        unset); a timeout propagates as a Playwright ``TimeoutError``.
+
+        Args:
+            session_id: Identifier of the active browser session.
+            request: Wait condition (selector and/or load state) and timeout.
+            manager: Session manager resolved from dependency injection.
+
+        Returns:
+            ActionResponse carrying the page URL once the condition holds.
+        """
         session = _lookup(manager, session_id)
         return ActionResponse(url=await operations.wait(session.page, request))
 
