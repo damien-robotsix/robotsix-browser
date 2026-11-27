@@ -46,7 +46,6 @@ dev = [
     "mypy>=1.13",
     "deptry>=0.20",
     "vulture>=2.13",
-    "mypy-baseline>=0.7",
     "robotsix-modules",
 ]
 
@@ -98,4 +97,4 @@ known_first_party = ["robotsix_browser", "scripts"]
 
 [tool.deptry.per_rule_ignores]
 # Tooling invoked via CLI, never imported.
-DEP002 = ["ruff", "mypy", "deptry", "vulture", "mypy-baseline", "pytest-asyncio"]
+DEP002 = ["ruff", "mypy", "deptry", "vulture", "pytest-asyncio"]
