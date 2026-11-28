@@ -222,3 +222,9 @@ installed; run `uv run playwright install chromium` to exercise them locally.
 Some validation cannot run in GitHub-hosted CI and requires a human on a
 network-enabled host (e.g. tuning the LinkedIn consent cookies). See
 [RUNBOOKS.md](RUNBOOKS.md) for the manual procedures.
+
+## Standards
+
+This repo follows the
+[robotsix stack standards](https://github.com/damien-robotsix/robotsix-standards).
+Repo-specific guidance for autonomous agents lives in [AGENT.md](AGENT.md).
