@@ -117,6 +117,10 @@ jobs:
       # reusable workflow's default `install-extras: tracing` so `uv sync`
       # does not fail on an undefined extra.
       install-extras: ""
+      # Skip the reviewed, known-safe paths listed in the repo-root
+      # .secrets-patterns-excluded (robotsix-standards
+      # docs/secret-files-are-never-tracked.md).
+      trufflehog-extra-args: "--exclude-paths=.secrets-patterns-excluded"
     permissions:
       contents: read
 

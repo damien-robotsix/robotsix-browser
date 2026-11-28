@@ -16,6 +16,7 @@ modules:
       - README.md
       - .gitignore
       - .pre-commit-config.yaml
+      - .secrets-patterns-excluded
       - .github/dependabot.yml
       - .github/workflows/ci.yml
       - .github/workflows/codeql.yml
